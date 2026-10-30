@@ -1,0 +1,9 @@
+{
+  "geminiApiKey": "",
+  "geminiBackupApiKey": "",
+  "geminiModel": "gemini-3.5-flash-lite",
+  "autoVerifyThreshold": 90,
+  "workerConcurrency": 4,
+  "consignorConsigneeMode": "both",
+  "preserveLeadingZeros": true
+}

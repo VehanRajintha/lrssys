@@ -1,0 +1,181 @@
+import { EventEmitter } from 'events';
+import path from 'path';
+import * as db from './db';
+import * as extractor from './extractor';
+import { QueueStatus, CusDecRecord } from './types';
+
+export interface QueueTask {
+  id: string;
+  filePath: string;
+  originalName: string;
+  fileHash: string | null;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  error: string | null;
+  addedAt: string;
+  record?: CusDecRecord;
+  retryCount?: number;
+}
+
+export class ProcessingQueue extends EventEmitter {
+  public queue: QueueTask[] = [];
+  public inFlight: Set<string> = new Set();
+  public isProcessing: boolean = false;
+  public isPaused: boolean = false;
+  public stats = {
+    total: 0,
+    completed: 0,
+    failed: 0
+  };
+
+  private rateLimitCooldownUntil: number = 0;
+  private isScheduling: boolean = false;
+
+  constructor() {
+    super();
+  }
+
+  enqueue(imageFiles: Array<{ filePath: string; originalName?: string; fileHash?: string | null }>): void {
+    const filesArray = Array.isArray(imageFiles) ? imageFiles : [imageFiles];
+    for (const file of filesArray) {
+      this.queue.push({
+        id: 'TASK_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        filePath: file.filePath,
+        originalName: file.originalName || path.basename(file.filePath),
+        fileHash: file.fileHash || null,
+        status: 'PENDING',
+        error: null,
+        addedAt: new Date().toISOString(),
+        retryCount: 0
+      });
+      this.stats.total++;
+    }
+    this.emitStatus();
+    this.processNext();
+  }
+
+  processNext(): void {
+    if (this.isPaused || this.isScheduling) return;
+
+    const settings = db.getSettings();
+    // Allow true parallel worker concurrency up to 8 (matches UI setting)
+    const concurrency = Math.max(1, Math.min(8, settings.workerConcurrency || 4));
+
+    // Adaptive Rate Pacing: Only pause if a 429 was recently encountered
+    const now = Date.now();
+    if (now < this.rateLimitCooldownUntil) {
+      const waitTime = this.rateLimitCooldownUntil - now;
+      this.isScheduling = true;
+      setTimeout(() => {
+        this.isScheduling = false;
+        this.processNext();
+      }, waitTime);
+      return;
+    }
+
+    // Dispatch available workers in true parallel
+    while (this.inFlight.size < concurrency && this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (!task) break;
+      this.inFlight.add(task.id);
+      this.executeTask(task, settings);
+    }
+
+    this.isProcessing = this.inFlight.size > 0 || this.queue.length > 0;
+    this.emitStatus();
+  }
+
+  async executeTask(task: QueueTask, settings: any): Promise<void> {
+    task.status = 'PROCESSING';
+    this.emitStatus();
+
+    try {
+      const extractedRecord = await extractor.extractDocumentData(task.filePath, settings);
+      extractedRecord.originalName = task.originalName;
+      if (task.fileHash) {
+        extractedRecord.fileHash = task.fileHash;
+      }
+
+      // Save to persistent storage (auto-merges in-place with debounced I/O)
+      const saved = db.saveRecord(extractedRecord);
+
+      task.status = 'COMPLETED';
+      task.record = saved;
+      this.stats.completed++;
+      this.emit('task:completed', { task, record: saved });
+    } catch (err: any) {
+      console.error(`Error processing task ${task.id} (${task.originalName}):`, err.message);
+
+      // If Rate Limit (429), automatically re-enqueue task and activate dynamic queue cooldown
+      if (err.message.includes('429') || err.message.includes('quota') || err.message.includes('RESOURCE_EXHAUSTED')) {
+        task.retryCount = (task.retryCount || 0) + 1;
+        if (task.retryCount <= 3) {
+          this.rateLimitCooldownUntil = Math.max(this.rateLimitCooldownUntil, Date.now() + 3000);
+          console.warn(`[Queue Rate Limit] Re-enqueuing ${task.originalName} (Retry ${task.retryCount}/3)...`);
+          this.queue.unshift(task); // Put back to front of queue
+          this.inFlight.delete(task.id);
+          this.processNext();
+          return;
+        }
+      }
+
+      task.status = 'FAILED';
+      task.error = err.message;
+      this.stats.failed++;
+      this.emit('task:failed', { task, error: err.message });
+    } finally {
+      this.inFlight.delete(task.id);
+      if (this.queue.length === 0 && this.inFlight.size === 0) {
+        db.flushRecordsSync();
+      }
+      this.processNext();
+    }
+  }
+
+  pause(): void {
+    this.isPaused = true;
+    this.emitStatus();
+  }
+
+  resume(): void {
+    this.isPaused = false;
+    this.emitStatus();
+    this.processNext();
+  }
+
+  cancelAll(): void {
+    this.queue = [];
+    this.isProcessing = this.inFlight.size > 0;
+    this.emitStatus();
+  }
+
+  getStatus(): QueueStatus {
+    const totalDone = this.stats.completed + this.stats.failed;
+    const progress = this.stats.total > 0 ? Math.round((totalDone / this.stats.total) * 100) : 0;
+    return {
+      isProcessing: this.inFlight.size > 0 || this.queue.length > 0,
+      isPaused: this.isPaused,
+      pendingCount: this.queue.length,
+      inFlightCount: this.inFlight.size,
+      completedCount: this.stats.completed,
+      failedCount: this.stats.failed,
+      totalCount: this.stats.total,
+      progressPercent: progress
+    };
+  }
+
+  emitStatus(): void {
+    this.emit('status', this.getStatus());
+  }
+
+  resetStats(): void {
+    this.stats = { total: 0, completed: 0, failed: 0 };
+    this.emitStatus();
+  }
+}
+
+const globalQueue = (globalThis as any).__lrsys_queue || new ProcessingQueue();
+if (process.env.NODE_ENV !== 'production') {
+  (globalThis as any).__lrsys_queue = globalQueue;
+}
+
+export default globalQueue as ProcessingQueue;

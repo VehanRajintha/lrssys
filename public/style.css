@@ -1,0 +1,1271 @@
+/* ===================================================================
+   LRSYS iOS 27 LIQUID GLASS - MARITIME CUSTOMS PORT THEME
+   Next-Generation Apple SF Pro Typography, Translucent Multi-Layered
+   Frosted Glassmorphism, Specular Highlights & Spring Motion Physics
+   =================================================================== */
+
+/* -------------------------------------------------------------------
+   1. COLOR PALETTES & LIQUID GLASS TOKENS
+   ------------------------------------------------------------------- */
+:root {
+  /* iOS 27 Liquid Light Mode (Default Crisp Ceramic Glass) */
+  --bg-app: #edf2f7;
+  --bg-app-rgb: 237, 242, 247;
+  --bg-mesh-1: rgba(2, 132, 199, 0.16);
+  --bg-mesh-2: rgba(16, 185, 129, 0.14);
+  --bg-mesh-3: rgba(6, 182, 212, 0.16);
+
+  /* Glass Layers (Light) */
+  --glass-surface: rgba(255, 255, 255, 0.72);
+  --glass-surface-elevated: rgba(255, 255, 255, 0.88);
+  --glass-surface-subtle: rgba(255, 255, 255, 0.52);
+  --glass-hover: rgba(255, 255, 255, 0.95);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-border-subtle: rgba(226, 232, 240, 0.8);
+  --glass-specular: inset 0 1px 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 1px 0 rgba(0, 0, 0, 0.03);
+
+  /* Header Glass */
+  --bg-header-glass: rgba(255, 255, 255, 0.78);
+  --header-text: #0f172a;
+  --header-border: rgba(255, 255, 255, 0.7);
+
+  /* Text & Accents */
+  --text-main: #0b1528;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* iOS Vivid Maritime Accents */
+  --ios-blue: #007aff;
+  --ios-blue-hover: #0062cc;
+  --ios-cyan: #32ade6;
+  --ios-teal: #30b0c7;
+  --ios-emerald: #34c759;
+  --ios-emerald-light: rgba(52, 199, 89, 0.14);
+  --ios-emerald-border: rgba(52, 199, 89, 0.35);
+  --ios-amber: #ff9500;
+  --ios-amber-light: rgba(255, 149, 0, 0.14);
+  --ios-amber-border: rgba(255, 149, 0, 0.35);
+  --ios-red: #ff3b30;
+  --ios-red-light: rgba(255, 59, 48, 0.14);
+  --ios-red-border: rgba(255, 59, 48, 0.35);
+  --ios-indigo: #5856d6;
+
+  /* Shadows & Glass Elevation */
+  --shadow-glass-sm: 0 2px 8px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  --shadow-glass-md: 0 8px 24px -4px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
+  --shadow-glass-lg: 0 20px 40px -8px rgba(15, 23, 42, 0.12), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+  --shadow-specular-glow: 0 0 24px rgba(0, 122, 255, 0.28);
+
+  /* Typography & Apple Physics */
+  --font-sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas, monospace;
+  --spring-bounce: cubic-bezier(0.16, 1, 0.3, 1);
+  --spring-fast: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Roundedness */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 9999px;
+}
+
+/* ===================================================================
+   iOS 27 LIQUID DARK MODE (Abyssal Oceanic Frosted Glass)
+   =================================================================== */
+[data-theme="dark"] {
+  --bg-app: #050a12;
+  --bg-app-rgb: 5, 10, 18;
+  --bg-mesh-1: rgba(0, 122, 255, 0.22);
+  --bg-mesh-2: rgba(52, 199, 89, 0.16);
+  --bg-mesh-3: rgba(50, 173, 230, 0.2);
+
+  /* Glass Layers (Dark) */
+  --glass-surface: rgba(13, 24, 41, 0.65);
+  --glass-surface-elevated: rgba(18, 33, 58, 0.78);
+  --glass-surface-subtle: rgba(11, 20, 34, 0.5);
+  --glass-hover: rgba(24, 43, 73, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --glass-specular: inset 0 1px 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 1px 0 rgba(0, 0, 0, 0.4);
+
+  /* Header Glass */
+  --bg-header-glass: rgba(7, 14, 25, 0.75);
+  --header-text: #f8fafc;
+  --header-border: rgba(255, 255, 255, 0.12);
+
+  /* Text & Accents */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+  --text-inverse: #050a12;
+
+  /* Vivid Neon Apple Colors in Dark */
+  --ios-blue: #0a84ff;
+  --ios-blue-hover: #409cff;
+  --ios-cyan: #64d2ff;
+  --ios-teal: #5ad8e6;
+  --ios-emerald: #30d158;
+  --ios-emerald-light: rgba(48, 209, 88, 0.18);
+  --ios-emerald-border: rgba(48, 209, 88, 0.4);
+  --ios-amber: #ffd60a;
+  --ios-amber-light: rgba(255, 214, 10, 0.16);
+  --ios-amber-border: rgba(255, 214, 10, 0.4);
+  --ios-red: #ff453a;
+  --ios-red-light: rgba(255, 69, 58, 0.18);
+  --ios-red-border: rgba(255, 69, 58, 0.4);
+  --ios-indigo: #5e5ce6;
+
+  --shadow-glass-sm: 0 4px 12px 0 rgba(0, 0, 0, 0.4);
+  --shadow-glass-md: 0 10px 30px -4px rgba(0, 0, 0, 0.6);
+  --shadow-glass-lg: 0 24px 50px -8px rgba(0, 0, 0, 0.8);
+  --shadow-specular-glow: 0 0 28px rgba(10, 132, 255, 0.35);
+}
+
+/* -------------------------------------------------------------------
+   2. GLOBAL RESET & AMBIENT LIQUID MESH BACKGROUND
+   ------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.28s var(--spring-bounce),
+              border-color 0.28s var(--spring-bounce),
+              color 0.28s var(--spring-bounce),
+              box-shadow 0.28s var(--spring-bounce);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-sf);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  min-height: 100vh;
+  line-height: 1.48;
+  letter-spacing: -0.015em;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  position: relative;
+}
+
+/* Ambient Liquid Gradient Orbs for Authentic Glass Light Diffusion */
+.liquid-ambient-mesh {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.liquid-orb-1 {
+  position: absolute;
+  top: -10vw;
+  left: 10vw;
+  width: 50vw;
+  height: 50vw;
+  max-width: 650px;
+  max-height: 650px;
+  background: radial-gradient(circle, var(--bg-mesh-1) 0%, rgba(0, 0, 0, 0) 70%);
+  filter: blur(85px);
+  border-radius: 50%;
+  animation: liquidMeshFloat 22s ease-in-out infinite alternate;
+}
+
+.liquid-orb-2 {
+  position: absolute;
+  top: 35vh;
+  right: -5vw;
+  width: 48vw;
+  height: 48vw;
+  max-width: 600px;
+  max-height: 600px;
+  background: radial-gradient(circle, var(--bg-mesh-2) 0%, rgba(0, 0, 0, 0) 70%);
+  filter: blur(95px);
+  border-radius: 50%;
+  animation: liquidMeshFloat 26s ease-in-out infinite alternate-reverse;
+}
+
+.liquid-orb-3 {
+  position: absolute;
+  bottom: -15vh;
+  left: 20vw;
+  width: 55vw;
+  height: 55vw;
+  max-width: 700px;
+  max-height: 700px;
+  background: radial-gradient(circle, var(--bg-mesh-3) 0%, rgba(0, 0, 0, 0) 70%);
+  filter: blur(105px);
+  border-radius: 50%;
+  animation: liquidMeshFloat 28s ease-in-out infinite alternate;
+}
+
+@keyframes liquidMeshFloat {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(4vw, 5vh) scale(1.08); }
+  100% { transform: translate(-3vw, -4vh) scale(0.94); }
+}
+
+/* iOS Silk Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ios-blue);
+}
+
+/* -------------------------------------------------------------------
+   3. iOS 27 FROSTED LIQUID GLASS HEADER
+   ------------------------------------------------------------------- */
+.port-header, .app-header {
+  background: var(--bg-header-glass);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border-bottom: 1px solid var(--header-border);
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.06);
+}
+
+.header-container {
+  max-width: 1720px;
+  margin: 0 auto;
+  padding: 0.85rem 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.brand-section, .logo-group {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  text-decoration: none;
+}
+
+.brand-icon, .logo-badge {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-cyan) 100%);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.45rem;
+  box-shadow: 0 8px 18px rgba(0, 122, 255, 0.35), var(--glass-specular);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+  transition: transform 0.3s var(--spring-bounce);
+}
+
+.brand-icon:hover {
+  transform: scale(1.06) rotate(6deg);
+}
+
+.brand-title, .logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-title h1, .logo-text h1 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-main);
+}
+
+.brand-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 0.16rem 0.55rem;
+  background: rgba(0, 122, 255, 0.12);
+  color: var(--ios-blue);
+  border: 1px solid rgba(0, 122, 255, 0.3);
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+}
+
+.brand-subtitle, .logo-text p {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  letter-spacing: -0.01em;
+  font-weight: 500;
+}
+
+/* -------------------------------------------------------------------
+   4. iOS 27 SEGMENTED CONTROLS (Declarations vs Tally)
+   ------------------------------------------------------------------- */
+.maritime-nav, .nav-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.25rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-border-subtle);
+  gap: 0.25rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .maritime-nav,
+[data-theme="dark"] .nav-tabs {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.48rem 1.15rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.24s var(--spring-bounce);
+  white-space: nowrap;
+}
+
+.nav-pill:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.nav-pill:active {
+  transform: scale(0.96);
+}
+
+.nav-pill.active {
+  background: var(--glass-surface-elevated);
+  color: var(--ios-blue);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), var(--glass-specular);
+  border-color: var(--glass-border);
+}
+
+[data-theme="dark"] .nav-pill.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Header Controls Cluster */
+.header-controls, .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+/* -------------------------------------------------------------------
+   5. iOS 27 DYNAMIC ISLAND STYLE THEME TOGGLE BUTTON
+   ------------------------------------------------------------------- */
+.theme-toggle-btn {
+  background: var(--glass-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm), var(--glass-specular);
+  color: var(--text-main);
+  border-radius: var(--radius-pill);
+  padding: 0.44rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  transition: all 0.25s var(--spring-bounce);
+}
+
+.theme-toggle-btn:hover {
+  background: var(--glass-hover);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: var(--shadow-glass-md);
+  border-color: var(--ios-blue);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+.theme-toggle-btn .theme-icon {
+  font-size: 1rem;
+  display: inline-block;
+  transition: transform 0.45s var(--spring-bounce);
+}
+
+.theme-toggle-btn:hover .theme-icon {
+  transform: rotate(24deg) scale(1.18);
+}
+
+/* -------------------------------------------------------------------
+   6. iOS 27 TACTILE SPRING BUTTON SYSTEM
+   ------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.56rem 1.15rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.22s var(--spring-bounce);
+  white-space: nowrap;
+  user-select: none;
+  letter-spacing: -0.01em;
+}
+
+.btn:active {
+  transform: scale(0.96) !important;
+}
+
+.btn-sm {
+  padding: 0.38rem 0.82rem;
+  font-size: 0.8rem;
+  border-radius: var(--radius-sm);
+}
+
+.btn-lg {
+  padding: 0.78rem 1.6rem;
+  font-size: 0.98rem;
+  border-radius: var(--radius-lg);
+}
+
+/* Vivid iOS Ocean Blue */
+.btn-ocean, .btn-primary {
+  background: linear-gradient(135deg, var(--ios-blue) 0%, #0056b3 100%);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 14px rgba(0, 122, 255, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+.btn-ocean:hover, .btn-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 122, 255, 0.45);
+}
+
+/* Vivid iOS Harbor Emerald */
+.btn-harbor, .btn-emerald {
+  background: linear-gradient(135deg, var(--ios-emerald) 0%, #248a3d 100%);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 14px rgba(52, 199, 89, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+.btn-harbor:hover, .btn-emerald:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(52, 199, 89, 0.45);
+}
+
+/* Translucent Frosted Glass Button */
+.btn-steel, .btn-dark {
+  background: var(--glass-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-sm), var(--glass-specular);
+  color: var(--text-main);
+}
+.btn-steel:hover, .btn-dark:hover {
+  background: var(--glass-hover);
+  border-color: var(--ios-blue);
+  color: var(--ios-blue);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glass-md);
+}
+
+/* iOS Red Danger */
+.btn-danger-outline {
+  background: var(--ios-red-light);
+  border: 1px solid var(--ios-red-border);
+  color: var(--ios-red);
+}
+.btn-danger-outline:hover {
+  background: var(--ios-red);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(255, 59, 48, 0.35);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------
+   7. MAIN VIEWPORT LAYOUT & COMMAND DECK
+   ------------------------------------------------------------------- */
+.main-viewport, .main-layout {
+  max-width: 1720px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 1.2rem auto;
+  padding: 0 1.25rem 3.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Command Deck: Multi-Layer Frosted Liquid Glass Card */
+.command-deck, .action-banner {
+  background: var(--glass-surface);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 1.35rem 1.5rem;
+  box-shadow: var(--shadow-glass-md), var(--glass-specular);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.action-ribbon, .action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.95rem;
+}
+
+.ingestion-cluster, .upload-button-cluster {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.hidden-input {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------
+   8. iOS 27 TELEMETRY WIDGETS
+   ------------------------------------------------------------------- */
+.telemetry-grid, .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.95rem;
+}
+
+.telemetry-card, .stat-card {
+  background: var(--glass-surface-elevated);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-glass-sm), var(--glass-specular);
+  transition: transform 0.28s var(--spring-bounce), box-shadow 0.28s var(--spring-bounce);
+}
+
+.telemetry-card:hover, .stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glass-md);
+}
+
+.telemetry-card::before, .stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--ios-blue);
+  border-radius: 4px 0 0 4px;
+}
+
+.telemetry-card.verified::before, .stat-card:nth-child(2)::before { background: var(--ios-emerald); }
+.telemetry-card.review::before, .stat-card:nth-child(3)::before { background: var(--ios-amber); }
+.telemetry-card.accuracy::before, .stat-card:nth-child(4)::before { background: var(--ios-cyan); }
+
+.telemetry-label, .stat-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.telemetry-value, .stat-val {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+}
+
+.stat-verified { color: var(--ios-emerald) !important; }
+.stat-review { color: var(--ios-amber) !important; }
+
+/* -------------------------------------------------------------------
+   9. RADAR / BATCH QUEUE PROGRESS BAR
+   ------------------------------------------------------------------- */
+.radar-progress-bar, .progress-box {
+  background: var(--glass-surface);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.4rem;
+  box-shadow: var(--shadow-glass-sm), var(--glass-specular);
+  display: none;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.radar-progress-bar.active, .progress-box.active {
+  display: flex;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-main);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.progress-track, .progress-bar-bg {
+  width: 100%;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+[data-theme="dark"] .progress-track,
+[data-theme="dark"] .progress-bar-bg {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progress-wave, .progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ios-blue) 0%, var(--ios-cyan) 50%, var(--ios-emerald) 100%);
+  width: 0%;
+  transition: width 0.35s var(--spring-bounce);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 12px rgba(50, 173, 230, 0.5);
+}
+
+/* -------------------------------------------------------------------
+   10. DUAL WORKSPACE COCKPIT (Perfect Screen Fit & Zero Cutoff)
+   ------------------------------------------------------------------- */
+.workspace-cockpit, .workspace-split {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1400px) {
+  .workspace-cockpit, .workspace-split {
+    grid-template-columns: 330px minmax(0, 1fr);
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 1120px) {
+  .workspace-cockpit, .workspace-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Inspection Bay: Glass Frosted Panel */
+.inspection-bay, .viewer-panel {
+  background: var(--glass-surface);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 1.15rem;
+  box-shadow: var(--shadow-glass-md), var(--glass-specular);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 5rem;
+  max-height: calc(100vh - 6.5rem);
+  overflow-y: auto;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.bay-header, .viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bay-title, .viewer-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.viewport-canvas, .image-canvas-container {
+  width: 100%;
+  min-height: 380px;
+  max-height: 500px;
+  background: #030712;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+.viewport-canvas.grabbing,
+.viewport-canvas:active,
+.image-canvas-container:active {
+  cursor: grabbing !important;
+}
+
+.doc-canvas-img, .doc-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.radar-reticle, .target-box-highlight {
+  position: absolute;
+  border: 2px dashed var(--ios-cyan);
+  background: rgba(50, 173, 230, 0.18);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  box-shadow: 0 0 15px rgba(50, 173, 230, 0.4);
+}
+
+/* Floating Frosted Pill Lens Controls */
+.lens-controls, .viewer-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 0.4rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-border-subtle);
+}
+
+[data-theme="dark"] .lens-controls,
+[data-theme="dark"] .viewer-controls {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Quick Edit Pod (iOS Inset Grouped Table Style) */
+.quick-edit-pod, #quickEditForm {
+  background: var(--glass-surface-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem;
+  display: none;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: var(--shadow-glass-sm), var(--glass-specular);
+}
+
+.field-group, .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-label, .form-group label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.field-input, .form-input {
+  padding: 0.62rem 0.95rem;
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.88rem;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+  transition: all 0.22s var(--spring-bounce);
+}
+
+.field-input:focus, .form-input:focus {
+  border-color: var(--ios-blue);
+  background: var(--glass-surface-elevated);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.18);
+}
+
+/* -------------------------------------------------------------------
+   11. CARGO LEDGER & iOS TABLE (Fully Aligned & Zero Cutoff)
+   ------------------------------------------------------------------- */
+.cargo-ledger, .data-panel {
+  background: var(--glass-surface);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 1.15rem;
+  box-shadow: var(--shadow-glass-md), var(--glass-specular);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.filter-command-strip, .filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.harbor-tabs, .filter-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-pill);
+  padding: 0.22rem;
+  gap: 0.22rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--glass-border-subtle);
+}
+
+[data-theme="dark"] .harbor-tabs,
+[data-theme="dark"] .filter-tabs {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tab-pill, .tab-btn {
+  border: none;
+  background: transparent;
+  padding: 0.38rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.2s var(--spring-bounce);
+}
+
+.tab-pill:hover, .tab-btn:hover {
+  color: var(--text-main);
+}
+
+.tab-pill.active, .tab-btn.active {
+  background: var(--glass-surface-elevated);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), var(--glass-specular);
+}
+
+[data-theme="dark"] .tab-pill.active,
+[data-theme="dark"] .tab-btn.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.search-field, .search-input {
+  padding: 0.5rem 0.95rem;
+  background: var(--glass-surface-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  color: var(--text-main);
+  font-size: 0.84rem;
+  outline: none;
+  width: 220px;
+  box-shadow: var(--shadow-glass-sm);
+  transition: all 0.22s var(--spring-bounce);
+}
+
+.search-field:focus, .search-input:focus {
+  border-color: var(--ios-blue);
+  background: var(--glass-hover);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.18);
+  width: 250px;
+}
+
+/* iOS Glass Data Table - Guaranteed Zero Cutoff */
+.ledger-table-wrapper, .table-responsive {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-surface-elevated);
+  box-shadow: var(--shadow-glass-sm);
+  position: relative;
+  box-sizing: border-box;
+}
+
+.ledger-table, .data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.82rem;
+}
+
+.ledger-table th, .data-table th {
+  background: var(--glass-surface-subtle);
+  color: var(--text-muted);
+  font-weight: 800;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.68rem 0.55rem;
+  border-bottom: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+.ledger-table td, .data-table td {
+  padding: 0.65rem 0.55rem;
+  border-bottom: 1px solid var(--glass-border-subtle);
+  vertical-align: middle;
+}
+
+.ledger-table tbody tr:hover, .data-table tbody tr:hover {
+  background: var(--glass-hover);
+  cursor: pointer;
+}
+
+.ledger-table tbody tr.selected, .data-table tbody tr.selected {
+  background: rgba(0, 122, 255, 0.12) !important;
+}
+
+[data-theme="dark"] .ledger-table tbody tr.selected,
+[data-theme="dark"] .data-table tbody tr.selected {
+  background: rgba(10, 132, 255, 0.2) !important;
+}
+
+/* Sticky Action Column on Right - Completely Fixes Hidden Features */
+.ledger-table th:last-child,
+.ledger-table td:last-child,
+.data-table th:last-child,
+.data-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--glass-surface-elevated);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 10;
+  box-shadow: -6px 0 14px rgba(0, 0, 0, 0.08);
+  text-align: center;
+  white-space: nowrap;
+  padding-left: 0.6rem;
+  padding-right: 0.85rem;
+}
+
+[data-theme="dark"] .ledger-table th:last-child,
+[data-theme="dark"] .ledger-table td:last-child,
+[data-theme="dark"] .data-table th:last-child,
+[data-theme="dark"] .data-table td:last-child {
+  background: var(--glass-surface-elevated);
+  box-shadow: -6px 0 16px rgba(0, 0, 0, 0.4);
+}
+
+.ledger-table tbody tr:hover td:last-child,
+.data-table tbody tr:hover td:last-child {
+  background: var(--glass-hover);
+}
+
+/* -------------------------------------------------------------------
+   12. iOS BADGES & PILLS
+   ------------------------------------------------------------------- */
+.stamp-badge, .green-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.94rem;
+  padding: 0.24rem 0.65rem;
+  background: var(--ios-emerald-light);
+  color: var(--ios-emerald);
+  border: 1px solid var(--ios-emerald-border);
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.24rem 0.7rem;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-verified {
+  background: var(--ios-emerald-light);
+  color: var(--ios-emerald);
+  border: 1px solid var(--ios-emerald-border);
+}
+
+.status-review {
+  background: var(--ios-amber-light);
+  color: var(--ios-amber);
+  border: 1px solid var(--ios-amber-border);
+}
+
+.status-corrected {
+  background: rgba(0, 122, 255, 0.14);
+  color: var(--ios-blue);
+  border: 1px solid rgba(0, 122, 255, 0.35);
+}
+
+/* -------------------------------------------------------------------
+   13. MOBILE RESPONSIVE CARDS FEED (< 860px)
+   ------------------------------------------------------------------- */
+.mobile-cargo-feed, .mobile-card-container {
+  display: none;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+@media (max-width: 860px) {
+  .ledger-table-wrapper, .table-responsive {
+    display: none;
+  }
+  .mobile-cargo-feed, .mobile-card-container {
+    display: flex;
+  }
+  .search-field, .search-input {
+    width: 100% !important;
+  }
+  .brand-title h1, .logo-text h1 {
+    font-size: 1rem;
+  }
+  .header-container {
+    padding: 0.75rem 1rem;
+  }
+  .main-viewport, .main-layout {
+    padding: 0 1rem 3.5rem 1rem;
+  }
+}
+
+.cargo-card, .mobile-doc-card {
+  background: var(--glass-surface);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-glass-sm), var(--glass-specular);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  transition: transform 0.22s var(--spring-bounce);
+}
+
+.cargo-card:active, .mobile-doc-card:active {
+  transform: scale(0.98);
+}
+
+.cargo-card-top, .card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cargo-card-prop, .card-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.prop-name, .card-field-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.prop-val, .card-field-val {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.cargo-card-actions, .card-actions {
+  display: flex;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
+/* -------------------------------------------------------------------
+   14. iOS 27 FROSTED SHEET MODALS
+   ------------------------------------------------------------------- */
+.maritime-modal-overlay, .modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 120;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.4rem;
+  animation: modalFadeIn 0.28s var(--spring-bounce);
+}
+
+.maritime-modal-overlay.active, .modal-overlay.active {
+  display: flex;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.maritime-modal-box, .modal-content {
+  background: var(--glass-surface-elevated);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  max-width: 620px;
+  width: 100%;
+  padding: 1.75rem;
+  box-shadow: var(--shadow-glass-lg), var(--glass-specular);
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: modalSlideUp 0.32s var(--spring-bounce);
+}
+
+@keyframes modalSlideUp {
+  from { transform: scale(0.94) translateY(15px); }
+  to { transform: scale(1) translateY(0); }
+}
+
+.modal-title-bar, .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.35rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--glass-border-subtle);
+}
+
+.modal-title-bar h3, .modal-header h3 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.modal-close-btn, .btn-close {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.06);
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.2s var(--spring-bounce);
+}
+
+[data-theme="dark"] .modal-close-btn,
+[data-theme="dark"] .btn-close {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-close-btn:hover, .btn-close:hover {
+  background: var(--ios-red-light);
+  color: var(--ios-red);
+}
+
+.qr-code-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.15rem;
+  padding: 1.6rem;
+  background: var(--glass-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  margin-bottom: 1rem;
+}
+
+.qr-code-box canvas {
+  border-radius: var(--radius-md);
+  background: white;
+  padding: 10px;
+  box-shadow: var(--shadow-glass-sm);
+}
+
+.lan-url-pill {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: rgba(0, 122, 255, 0.12);
+  color: var(--ios-blue);
+  padding: 0.45rem 1.2rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(0, 122, 255, 0.3);
+  word-break: break-all;
+}

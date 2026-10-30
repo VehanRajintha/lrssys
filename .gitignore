@@ -1,0 +1,32 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+tsconfig.tsbuildinfo
+
+# Bundled local runtime
+runtime/
+
+# Environment local files
+.env
+.env*.local
+!.env.example
+
+# User uploads and generated test files
+uploads/*
+!uploads/.gitkeep
+test_output.xlsx
+exported_declarations.xlsx
+*.tmp
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
