@@ -101,7 +101,7 @@ export class ProcessingQueue extends EventEmitter {
       }
 
       // Save to persistent storage (auto-merges in-place with debounced I/O)
-      const saved = db.saveRecord(extractedRecord);
+      const saved = await db.saveRecord(extractedRecord);
 
       task.status = 'COMPLETED';
       task.record = saved;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as db from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -19,7 +21,7 @@ export async function PUT(
 ) {
   const { id } = await params;
   const updates = await request.json();
-  const updated = db.updateRecord(id, updates);
+  const updated = await db.updateRecord(id, updates);
   if (!updated) {
     return NextResponse.json({ error: 'Record not found' }, { status: 404 });
   }

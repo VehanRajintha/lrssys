@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import * as db from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST() {
-  const records = db.getRecords();
-  records.forEach(r => {
+  const records = await db.getFreshRecords();
+  for (const r of records) {
     if (r.status === 'NEEDS_REVIEW') {
-      db.updateRecord(r.id, { status: 'VERIFIED', manualCorrection: true });
+      await db.updateRecord(r.id, { status: 'VERIFIED', manualCorrection: true });
     }
-  });
+  }
   return NextResponse.json({ message: 'All pending records marked as verified', stats: db.getStats() });
 }

@@ -2,15 +2,96 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import crypto from 'crypto';
 import queue from '@/lib/queue';
+import * as db from '@/lib/db';
+import * as extractor from '@/lib/extractor';
 import { uploadDocumentFile } from '@/lib/storage';
+import { CusDecRecord } from '@/lib/types';
+
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const processSync = searchParams.get('process') === '1' || searchParams.get('process') === 'true';
+
     const formData = await request.formData();
     const files = formData.getAll('documents') as File[];
 
     if (!files || files.length === 0) {
       return NextResponse.json({ error: 'No files were uploaded.' }, { status: 400 });
+    }
+
+    if (processSync) {
+      await db.initSupabaseSync();
+      const settings = db.getSettings();
+      const processedRecords: CusDecRecord[] = [];
+
+      for (const file of files) {
+        if (!file.name || typeof file.arrayBuffer !== 'function') continue;
+
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+        const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
+
+        const ext = path.extname(file.name);
+        const cleanBase = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `${cleanBase}_${Date.now()}${ext}`;
+
+        const stored = await uploadDocumentFile(buffer, filename, file.type || 'image/jpeg');
+        const targetPath = stored.isCloud ? stored.publicUrl : stored.storagePath;
+
+        let extractedRecord: CusDecRecord;
+        try {
+          extractedRecord = await extractor.extractDocumentData(targetPath, settings);
+        } catch (err: any) {
+          console.error(`[Extraction error on ${file.name}]:`, err.message);
+          extractedRecord = {
+            id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            filename,
+            imagePath: targetPath,
+            imageUrl: stored.publicUrl,
+            originalName: file.name,
+            fileHash,
+            greenStampNumber: '000000',
+            customsRefNumber: 'UNKNOWN',
+            customsDate: new Date().toLocaleDateString('en-GB'),
+            consigneeName: 'UNKNOWN CONSIGNEE',
+            consigneeTIN: '',
+            declarantName: 'UNKNOWN DECLARANT',
+            declarantTIN: '',
+            blNumber: '',
+            packagesCount: '',
+            goodsDescription: '',
+            confidence: 25,
+            status: 'NEEDS_REVIEW',
+            issues: [`Extraction error: ${err.message}`],
+            boundingBoxes: null,
+            manualCorrection: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+        }
+
+        extractedRecord.originalName = file.name;
+        extractedRecord.fileHash = fileHash;
+        extractedRecord.imageUrl = stored.publicUrl;
+
+        const saved = await db.saveRecord(extractedRecord);
+        processedRecords.push(saved);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully processed ${processedRecords.length} document(s)`,
+        records: processedRecords,
+        record: processedRecords[0] || null,
+        stats: db.getStats()
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        }
+      });
     }
 
     const enqueuedFiles: Array<{ filePath: string; originalName: string; fileHash: string | null; imageUrl?: string }> = [];
@@ -46,6 +127,10 @@ export async function POST(request: NextRequest) {
       message: `Successfully enqueued ${enqueuedFiles.length} file(s). Duplicate uploads will auto-merge.`,
       count: enqueuedFiles.length,
       status: queue.getStatus()
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate'
+      }
     });
   } catch (err: any) {
     console.error('Upload Error:', err);

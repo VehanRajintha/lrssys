@@ -128,8 +128,9 @@ function rowToRecord(row: any): CusDecRecord {
 /**
  * Initialize and sync in-memory cache with Supabase database (if configured)
  */
-export async function initSupabaseSync(): Promise<void> {
-  if (isSupabaseInitialized || !isSupabaseConfigured()) return;
+export async function initSupabaseSync(force = false): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  if (!force && isSupabaseInitialized) return;
   if (syncPromise) return syncPromise;
 
   syncPromise = (async () => {
@@ -173,6 +174,11 @@ export async function initSupabaseSync(): Promise<void> {
   })();
 
   return syncPromise;
+}
+
+export async function getFreshRecords(): Promise<CusDecRecord[]> {
+  await initSupabaseSync(true);
+  return recordsCache;
 }
 
 // Background sync on startup if Supabase is active
@@ -252,7 +258,7 @@ function findDuplicateIndex(record: Partial<CusDecRecord>): number {
   return -1;
 }
 
-export function saveRecord(record: CusDecRecord): CusDecRecord {
+export async function saveRecord(record: CusDecRecord): Promise<CusDecRecord> {
   const existingIdx = findDuplicateIndex(record);
   let saved: CusDecRecord;
 
@@ -291,18 +297,18 @@ export function saveRecord(record: CusDecRecord): CusDecRecord {
 
   scheduleRecordsSave();
 
-  // Async Supabase Sync
+  // Await Supabase Sync so data is guaranteed committed in database before responding
   if (isSupabaseConfigured()) {
     const supabase = getSupabase();
     if (supabase) {
-      safeSupabaseExec(() => supabase.from('cusdec_records').upsert(recordToRow(saved)), 'saveRecord');
+      await safeSupabaseExec(() => supabase.from('cusdec_records').upsert(recordToRow(saved)), 'saveRecord');
     }
   }
 
   return saved;
 }
 
-export function updateRecord(id: string, updates: Partial<CusDecRecord>): CusDecRecord | null {
+export async function updateRecord(id: string, updates: Partial<CusDecRecord>): Promise<CusDecRecord | null> {
   const idx = recordsCache.findIndex(r => r.id === id);
   if (idx >= 0) {
     const current = recordsCache[idx];
@@ -318,7 +324,7 @@ export function updateRecord(id: string, updates: Partial<CusDecRecord>): CusDec
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        safeSupabaseExec(() => supabase.from('cusdec_records').update(recordToRow(recordsCache[idx])).eq('id', id), 'updateRecord');
+        await safeSupabaseExec(() => supabase.from('cusdec_records').update(recordToRow(recordsCache[idx])).eq('id', id), 'updateRecord');
       }
     }
 

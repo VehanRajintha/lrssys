@@ -193,6 +193,11 @@ export default function LrsysPortal() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
+  // Client-side real-time processing refs
+  const isClientProcessingRef = useRef(false);
+  const isClientPausedRef = useRef(false);
+  const isClientCancelledRef = useRef(false);
+
   // -------------------------------------------------------------
   // INITIALIZATION & THEME
   // -------------------------------------------------------------
@@ -206,20 +211,22 @@ export default function LrsysPortal() {
     fetchSystemInfo();
     fetchStorageStats();
 
-    // Start queue telemetry polling
+    // Start queue telemetry polling (only monitors if client is not actively processing)
     const interval = setInterval(async () => {
+      if (isClientProcessingRef.current) return;
+
       try {
-        const res = await fetch('/api/queue/status');
+        const res = await fetch('/api/queue/status', { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
-          setQueueStatus(data.queue);
-          if (data.stats) setStats(data.stats);
-          if (data.queue.isProcessing) {
+          if (data.queue && data.queue.isProcessing) {
+            setQueueStatus(data.queue);
+            if (data.stats) setStats(data.stats);
             fetchRecords(false);
           }
         }
       } catch (err) {}
-    }, 1500);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, []);
@@ -286,11 +293,32 @@ export default function LrsysPortal() {
     try {
       const q = searchTerm.trim();
       const url = `/api/records?status=ALL${q ? `&search=${encodeURIComponent(q)}` : ''}`;
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       if (res.ok) {
         const data = await res.json();
-        setRecords(data.records || []);
-        if (data.stats) setStats(data.stats);
+        if (Array.isArray(data.records)) {
+          setRecords(prev => {
+            // Guard against wiping newly-streamed items during active client ingestion
+            if (isClientProcessingRef.current && prev.length > (data.records?.length || 0)) {
+              return prev;
+            }
+            return data.records || [];
+          });
+        }
+        if (data.stats) {
+          setStats(prev => {
+            if (isClientProcessingRef.current && prev.total > (data.stats?.total || 0)) {
+              return prev;
+            }
+            return data.stats;
+          });
+        }
 
         if (updateSelection && data.records?.length > 0) {
           setSelectedRecord(prev => {
@@ -529,6 +557,128 @@ export default function LrsysPortal() {
   // -------------------------------------------------------------
   // UPLOADS & DRAG AND DROP
   // -------------------------------------------------------------
+  const processFilesWithRealtimeProgress = async (files: File[]) => {
+    if (!files || files.length === 0) return;
+
+    isClientProcessingRef.current = true;
+    isClientPausedRef.current = false;
+    isClientCancelledRef.current = false;
+
+    const totalCount = files.length;
+    let completedCount = 0;
+    let failedCount = 0;
+
+    // Immediately show real-time progress banner
+    setQueueStatus({
+      isProcessing: true,
+      isPaused: false,
+      pendingCount: totalCount,
+      inFlightCount: 0,
+      completedCount: 0,
+      failedCount: 0,
+      totalCount,
+      progressPercent: 0
+    });
+
+    showToast(`Starting real-time extraction of ${totalCount} documents...`, 'info');
+
+    // Concurrency: use workerConcurrency setting (default 4)
+    const concurrency = Math.min(totalCount, Math.max(1, settings.workerConcurrency || 4));
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < totalCount && !isClientCancelledRef.current) {
+        // Pause loop
+        while (isClientPausedRef.current && !isClientCancelledRef.current) {
+          await new Promise(res => setTimeout(res, 200));
+        }
+
+        if (isClientCancelledRef.current) break;
+
+        const currentIndex = nextIndex++;
+        const currentFile = files[currentIndex];
+        if (!currentFile) break;
+
+        try {
+          const formData = new FormData();
+          formData.append('documents', currentFile);
+
+          const res = await fetch('/api/upload?process=1', {
+            method: 'POST',
+            body: formData
+          });
+
+          const text = await res.text();
+          let data: any = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            throw new Error(`Server returned status ${res.status}`);
+          }
+
+          if (!res.ok) {
+            throw new Error(data.error || `Upload failed with status ${res.status}`);
+          }
+
+          if (data.record) {
+            // Instantly append / update newly extracted record in ledger state
+            setRecords(prev => {
+              const idx = prev.findIndex(r => r.id === data.record.id || (
+                r.greenStampNumber === data.record.greenStampNumber &&
+                r.customsRefNumber === data.record.customsRefNumber &&
+                r.greenStampNumber !== '000000' && r.customsRefNumber !== 'UNKNOWN'
+              ));
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = data.record;
+                return next;
+              }
+              return [data.record, ...prev];
+            });
+
+            // Update stats in real-time
+            if (data.stats) {
+              setStats(data.stats);
+            }
+          }
+          completedCount++;
+        } catch (err: any) {
+          console.error(`Error processing ${currentFile.name}:`, err);
+          failedCount++;
+        } finally {
+          const progressPercent = Math.round(((completedCount + failedCount) / totalCount) * 100);
+          setQueueStatus(prev => ({
+            ...prev,
+            pendingCount: Math.max(0, totalCount - (completedCount + failedCount)),
+            completedCount,
+            failedCount,
+            progressPercent
+          }));
+        }
+      }
+    };
+
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.all(workers);
+
+    isClientProcessingRef.current = false;
+
+    if (isClientCancelledRef.current) {
+      showToast(`Ingestion cancelled: ${completedCount} documents saved to ledger.`, 'warning');
+    } else {
+      showToast(`All ${completedCount} documents verified and saved to ledger!`, 'success');
+    }
+
+    setQueueStatus(prev => ({
+      ...prev,
+      isProcessing: false,
+      progressPercent: 100
+    }));
+
+    await fetchRecords(false);
+    await fetchStorageStats();
+  };
+
   const handleZipFile = async (zipFile: File) => {
     try {
       showToast(`Unpacking ZIP: ${zipFile.name}...`, 'info');
@@ -557,58 +707,27 @@ export default function LrsysPortal() {
         return;
       }
 
-      showToast(`Found ${imageFiles.length} declaration images. Ingesting in batches...`, 'info');
-
-      // Upload in batches of 4 to guarantee zero Netlify timeouts and bypass the 6MB server payload limit
-      const batchSize = 4;
-      for (let i = 0; i < imageFiles.length; i += batchSize) {
-        const batch = imageFiles.slice(i, i + batchSize);
-        const formData = new FormData();
-        batch.forEach(f => formData.append('documents', f));
-
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        const text = await res.text();
-        let data: any = {};
-        try {
-          data = text ? JSON.parse(text) : {};
-        } catch {
-          throw new Error(text || `Server returned ${res.status}`);
-        }
-
-        if (!res.ok) {
-          throw new Error(data.error || `Upload failed with status ${res.status}`);
-        }
-      }
-
-      showToast(`Successfully uploaded ${imageFiles.length} images from ZIP!`, 'success');
-      fetchRecords();
-      fetchStorageStats();
+      await processFilesWithRealtimeProgress(imageFiles);
     } catch (err: any) {
-      showToast('ZIP Upload Failed', 'error', err.message);
+      showToast('ZIP Processing Failed', 'error', err.message);
     }
   };
 
   const handleFileUpload = async (files: FileList | null, endpoint: string, fieldName: string) => {
     if (!files || files.length === 0) return;
 
-    // Client-side ZIP unpacking to prevent Netlify 6MB body limit
     if (fieldName === 'zipfile' || (files.length === 1 && files[0].name.toLowerCase().endsWith('.zip'))) {
       await handleZipFile(files[0]);
       return;
     }
 
-    const formData = new FormData();
     if (fieldName === 'documents') {
-      for (let i = 0; i < files.length; i++) {
-        formData.append('documents', files[i]);
-      }
-    } else {
-      formData.append(fieldName, files[0]);
+      await processFilesWithRealtimeProgress(Array.from(files));
+      return;
     }
+
+    const formData = new FormData();
+    formData.append(fieldName, files[0]);
 
     try {
       showToast(`Uploading ${files.length} file(s)...`, 'info');
@@ -625,7 +744,7 @@ export default function LrsysPortal() {
       }
 
       if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
-      showToast(`Upload complete! Processing in queue.`, 'success');
+      showToast(`Upload complete!`, 'success');
       fetchRecords();
       fetchStorageStats();
     } catch (err: any) {
@@ -966,7 +1085,14 @@ export default function LrsysPortal() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetch('/api/queue/resume', { method: 'POST' })}
+                      onClick={() => {
+                        if (isClientProcessingRef.current) {
+                          isClientPausedRef.current = false;
+                          setQueueStatus(prev => ({ ...prev, isPaused: false }));
+                        } else {
+                          fetch('/api/queue/resume', { method: 'POST' });
+                        }
+                      }}
                       className="gap-1.5 h-7 text-xs"
                     >
                       <Play className="w-3.5 h-3.5" /> Resume
@@ -975,7 +1101,14 @@ export default function LrsysPortal() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetch('/api/queue/pause', { method: 'POST' })}
+                      onClick={() => {
+                        if (isClientProcessingRef.current) {
+                          isClientPausedRef.current = true;
+                          setQueueStatus(prev => ({ ...prev, isPaused: true }));
+                        } else {
+                          fetch('/api/queue/pause', { method: 'POST' });
+                        }
+                      }}
                       className="gap-1.5 h-7 text-xs"
                     >
                       <Pause className="w-3.5 h-3.5" /> Pause
@@ -984,7 +1117,15 @@ export default function LrsysPortal() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => fetch('/api/queue/cancel', { method: 'POST' })}
+                    onClick={() => {
+                      if (isClientProcessingRef.current) {
+                        isClientCancelledRef.current = true;
+                        setQueueStatus(prev => ({ ...prev, isProcessing: false }));
+                        showToast('Batch processing cancelled.', 'warning');
+                      } else {
+                        fetch('/api/queue/cancel', { method: 'POST' });
+                      }
+                    }}
                     className="gap-1.5 h-7 text-xs"
                   >
                     <XCircle className="w-3.5 h-3.5" /> Cancel
@@ -1231,22 +1372,22 @@ export default function LrsysPortal() {
                       </TabsTrigger>
                       <TabsTrigger value="NEEDS_REVIEW" className="gap-1.5 text-xs">
                         <span>Review</span>
-                        {stats.needsReview > 0 && (
+                        {records.filter(r => r.status === 'NEEDS_REVIEW').length > 0 && (
                           <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
-                            {stats.needsReview}
+                            {records.filter(r => r.status === 'NEEDS_REVIEW').length}
                           </Badge>
                         )}
                       </TabsTrigger>
                       <TabsTrigger value="VERIFIED" className="gap-1.5 text-xs">
                         <span>Verified</span>
                         <Badge variant="success" className="px-1.5 py-0 text-[10px]">
-                          {stats.verified}
+                          {records.filter(r => r.status === 'VERIFIED').length}
                         </Badge>
                       </TabsTrigger>
                       <TabsTrigger value="CORRECTED" className="gap-1.5 text-xs">
                         <span>Corrected</span>
                         <Badge variant="info" className="px-1.5 py-0 text-[10px]">
-                          {stats.corrected}
+                          {records.filter(r => r.status === 'CORRECTED').length}
                         </Badge>
                       </TabsTrigger>
                     </TabsList>
