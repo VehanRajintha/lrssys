@@ -325,16 +325,20 @@ export function updateRecord(id: string, updates: Partial<CusDecRecord>): CusDec
   return null;
 }
 
-export function deleteRecord(id: string): boolean {
+export async function deleteRecord(id: string): Promise<boolean> {
   const initialLen = recordsCache.length;
   recordsCache = recordsCache.filter(r => r.id !== id);
   if (recordsCache.length !== initialLen) {
-    scheduleRecordsSave();
+    flushRecordsSync();
 
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        safeSupabaseExec(() => supabase.from('cusdec_records').delete().eq('id', id), 'deleteRecord');
+        try {
+          await supabase.from('cusdec_records').delete().eq('id', id);
+        } catch (err: any) {
+          console.error('[Supabase Delete Error]:', err.message);
+        }
       }
     }
     return true;
@@ -342,33 +346,41 @@ export function deleteRecord(id: string): boolean {
   return false;
 }
 
-export function deleteRecords(ids: string[]): number {
+export async function deleteRecords(ids: string[]): Promise<number> {
   if (!Array.isArray(ids) || ids.length === 0) return 0;
   const initialLen = recordsCache.length;
   const idSet = new Set(ids);
   recordsCache = recordsCache.filter(r => !idSet.has(r.id));
   const deletedCount = initialLen - recordsCache.length;
   if (deletedCount > 0) {
-    scheduleRecordsSave();
+    flushRecordsSync();
 
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        safeSupabaseExec(() => supabase.from('cusdec_records').delete().in('id', ids), 'deleteRecords');
+        try {
+          await supabase.from('cusdec_records').delete().in('id', ids);
+        } catch (err: any) {
+          console.error('[Supabase Bulk Delete Error]:', err.message);
+        }
       }
     }
   }
   return deletedCount;
 }
 
-export function clearAllRecords(): boolean {
+export async function clearAllRecords(): Promise<boolean> {
   recordsCache = [];
   flushRecordsSync();
 
   if (isSupabaseConfigured()) {
     const supabase = getSupabase();
     if (supabase) {
-      safeSupabaseExec(() => supabase.from('cusdec_records').delete().neq('id', ''), 'clearAllRecords');
+      try {
+        await supabase.from('cusdec_records').delete().not('id', 'is', null);
+      } catch (err: any) {
+        console.error('[Supabase Clear All Error]:', err.message);
+      }
     }
   }
 

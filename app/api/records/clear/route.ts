@@ -3,7 +3,7 @@ import * as db from '@/lib/db';
 import queue from '@/lib/queue';
 
 export async function POST() {
-  db.clearAllRecords();
+  await db.clearAllRecords();
   queue.resetStats();
   return NextResponse.json({ message: 'All records cleared', stats: db.getStats() });
 }

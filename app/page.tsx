@@ -477,12 +477,19 @@ export default function LrsysPortal() {
   const clearAllRecords = async () => {
     if (!confirm('Are you sure you want to clear all extracted declarations from the system?')) return;
     try {
-      await fetch('/api/records/clear', { method: 'POST' });
-      setSelectedRecord(null);
-      setSelectedRowIds(new Set());
-      fetchRecords();
-      showToast('System ledger cleared', 'info');
-    } catch (err) {}
+      const res = await fetch('/api/records/clear', { method: 'POST' });
+      if (res.ok) {
+        setSelectedRecord(null);
+        setSelectedRowIds(new Set());
+        setRecords([]);
+        setStats({ total: 0, verified: 0, needsReview: 0, corrected: 0, accuracyRate: 0 });
+        await fetchRecords();
+        await fetchStorageStats();
+        showToast('System ledger cleared', 'info');
+      }
+    } catch (err: any) {
+      showToast('Clear failed', 'error', err.message);
+    }
   };
 
   const reprocessAllWithAI = async () => {

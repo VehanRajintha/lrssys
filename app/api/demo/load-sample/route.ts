@@ -2,10 +2,9 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import queue from '@/lib/queue';
+import { uploadDocumentFile } from '@/lib/storage';
 
 const SAMPLES_DIR = path.join(process.cwd(), 'samples');
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 export async function POST() {
   const samplePath = path.join(SAMPLES_DIR, 'cusdec_sample_000073.jpg');
@@ -14,11 +13,12 @@ export async function POST() {
   }
 
   const destName = `sample_${Date.now()}_cusdec_sample_000073.jpg`;
-  const destPath = path.join(UPLOADS_DIR, destName);
-  fs.copyFileSync(samplePath, destPath);
+  const sampleBuf = fs.readFileSync(samplePath);
+  const stored = await uploadDocumentFile(sampleBuf, destName, 'image/jpeg');
 
   queue.enqueue([{
-    filePath: destPath,
+    filePath: stored.isCloud ? stored.publicUrl : stored.storagePath,
+    imageUrl: stored.publicUrl,
     originalName: 'cusdec_sample_000073.jpg'
   }]);
 

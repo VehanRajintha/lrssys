@@ -8,7 +8,7 @@ const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
 export async function POST() {
   const existingRecords = db.getRecords();
-  db.clearAllRecords();
+  await db.clearAllRecords();
   queue.resetStats();
 
   const toProcess: Array<{ filePath: string; originalName: string }> = [];

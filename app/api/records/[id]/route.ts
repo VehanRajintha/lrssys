@@ -31,7 +31,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const deleted = db.deleteRecord(id);
+  const deleted = await db.deleteRecord(id);
   if (!deleted) {
     return NextResponse.json({ error: 'Record not found' }, { status: 404 });
   }

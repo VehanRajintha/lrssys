@@ -39,7 +39,7 @@ export async function POST() {
   }
 
   // Remove the old unknown records so fresh extractions take their place
-  db.deleteRecords(idsToRemove);
+  await db.deleteRecords(idsToRemove);
 
   queue.enqueue(toProcess);
 

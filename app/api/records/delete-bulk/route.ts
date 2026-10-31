@@ -7,6 +7,6 @@ export async function POST(request: NextRequest) {
   if (!ids || !Array.isArray(ids)) {
     return NextResponse.json({ error: 'Array of ids is required' }, { status: 400 });
   }
-  const count = db.deleteRecords(ids);
+  const count = await db.deleteRecords(ids);
   return NextResponse.json({ message: `Deleted ${count} records`, count, stats: db.getStats() });
 }
