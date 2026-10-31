@@ -146,3 +146,14 @@
 .animate-shimmer {
   animation: shimmer 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Document Scan Optical Laser */
+@keyframes scanLaser {
+  0% { top: 0%; opacity: 0.6; }
+  50% { top: 100%; opacity: 1; }
+  100% { top: 0%; opacity: 0.6; }
+}
+
+.animate-scan-laser {
+  animation: scanLaser 2.4s ease-in-out infinite;
+}

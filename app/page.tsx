@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table,
@@ -128,6 +129,12 @@ export default function LrsysPortal() {
   const [filter, setFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'CORRECTED' | 'DUPLICATES'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+
+  // Skeleton Loading states
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isTableLoading, setIsTableLoading] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(true);
+  const [isStorageLoading, setIsStorageLoading] = useState(false);
 
   // Dynamic identification of duplicate records (strictly requires at least 3 matching critical fields)
   const duplicateIdSet = useMemo(() => {
@@ -482,7 +489,8 @@ export default function LrsysPortal() {
   // -------------------------------------------------------------
   // DATA FETCHING
   // -------------------------------------------------------------
-  const fetchRecords = async (updateSelection = true) => {
+  const fetchRecords = async (updateSelection = true, showTableLoading = false) => {
+    if (showTableLoading) setIsTableLoading(true);
     try {
       const q = searchTerm.trim();
       const url = `/api/records?status=ALL${q ? `&search=${encodeURIComponent(q)}` : ''}`;
@@ -515,6 +523,9 @@ export default function LrsysPortal() {
       }
     } catch (err) {
       console.error('Failed to fetch records:', err);
+    } finally {
+      setIsInitialLoading(false);
+      if (showTableLoading) setIsTableLoading(false);
     }
   };
 
@@ -538,14 +549,18 @@ export default function LrsysPortal() {
     } catch (err) {}
   };
 
-  const fetchStorageStats = async () => {
+  const fetchStorageStats = async (showLoading = false) => {
+    if (showLoading) setIsStorageLoading(true);
     try {
       const res = await fetch('/api/storage/stats');
       if (res.ok) {
         const data = await res.json();
         setStorageStats(data);
       }
-    } catch (err) {}
+    } catch (err) {
+    } finally {
+      if (showLoading) setIsStorageLoading(false);
+    }
   };
 
   const handlePurgeStorage = async (action: 'all' | 'orphans') => {
@@ -583,9 +598,14 @@ export default function LrsysPortal() {
   };
 
   const openInspectionModal = (record: CusDecRecord) => {
+    setIsImageLoading(true);
     selectRecord(record);
     setIsInspectionModalOpen(true);
   };
+
+  useEffect(() => {
+    setIsImageLoading(true);
+  }, [selectedRecord?.id, selectedRecord?.imageUrl]);
 
   useEffect(() => {
     if (selectedRecord) {
@@ -1738,8 +1758,17 @@ export default function LrsysPortal() {
                   <FileText className="w-4 h-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tracking-tight">{ledgerStats.total}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Ingested in port ledger</p>
+                  {isInitialLoading ? (
+                    <div>
+                      <Skeleton className="h-8 w-16 rounded-md mb-1.5" />
+                      <Skeleton className="h-3.5 w-28 rounded" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold tracking-tight">{ledgerStats.total}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Ingested in port ledger</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1751,10 +1780,19 @@ export default function LrsysPortal() {
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-                    {ledgerStats.verified + ledgerStats.corrected}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Ready for port clearance</p>
+                  {isInitialLoading ? (
+                    <div>
+                      <Skeleton className="h-8 w-16 rounded-md mb-1.5" />
+                      <Skeleton className="h-3.5 w-32 rounded" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                        {ledgerStats.verified + ledgerStats.corrected}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Ready for port clearance</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1766,10 +1804,19 @@ export default function LrsysPortal() {
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
-                    {ledgerStats.needsReview}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Flagged for manual inspection</p>
+                  {isInitialLoading ? (
+                    <div>
+                      <Skeleton className="h-8 w-12 rounded-md mb-1.5" />
+                      <Skeleton className="h-3.5 w-36 rounded" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
+                        {ledgerStats.needsReview}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Flagged for manual inspection</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1781,16 +1828,25 @@ export default function LrsysPortal() {
                   <Activity className="w-4 h-4 text-primary" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tracking-tight text-primary">
-                    {ledgerStats.accuracyRate}%
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Multi-pass OCR confidence</p>
+                  {isInitialLoading ? (
+                    <div>
+                      <Skeleton className="h-8 w-20 rounded-md mb-1.5" />
+                      <Skeleton className="h-3.5 w-32 rounded" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold tracking-tight text-primary">
+                        {ledgerStats.accuracyRate}%
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Multi-pass OCR confidence</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
               {/* iOS-Style Interactive Storage Bucket Card */}
               <Card 
-                onClick={() => setIsStorageModalOpen(true)}
+                onClick={() => { setIsStorageModalOpen(true); fetchStorageStats(true); }}
                 className="shadow-sm border-sky-500/25 bg-gradient-to-br from-sky-500/[0.05] via-blue-500/[0.02] to-transparent cursor-pointer hover:border-sky-500/60 hover:shadow-lg hover:scale-[1.01] active:scale-[0.98] transition-all duration-200 select-none group relative overflow-hidden"
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -1801,38 +1857,50 @@ export default function LrsysPortal() {
                   <HardDrive className="w-4 h-4 text-sky-500 group-hover:rotate-12 transition-transform duration-300" />
                 </CardHeader>
                 <CardContent className="flex items-center justify-between">
-                  <div>
-                    <div className="text-3xl font-bold tracking-tight text-sky-600 dark:text-sky-400">
-                      {storageStats.totalFormatted}
+                  {isInitialLoading ? (
+                    <div className="w-full flex items-center justify-between">
+                      <div>
+                        <Skeleton className="h-8 w-24 rounded-md mb-1.5" />
+                        <Skeleton className="h-3.5 w-32 rounded" />
+                      </div>
+                      <Skeleton className="w-12 h-12 rounded-full flex-shrink-0" />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {storageStats.totalFiles} files · {storageStats.percentUsed}% of 5GB
-                    </p>
-                  </div>
-                  {/* Circular Activity Ring */}
-                  <div className="relative w-12 h-12 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
-                      <path
-                        className="text-sky-500/20"
-                        strokeWidth="3.5"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                      <path
-                        className="text-sky-500 transition-all duration-1000 ease-out"
-                        strokeDasharray={`${Math.max(4, storageStats.percentUsed)}, 100`}
-                        strokeWidth="3.5"
-                        strokeLinecap="round"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                    </svg>
-                    <span className="absolute text-[10px] font-semibold text-sky-600 dark:text-sky-300">
-                      {Math.round(storageStats.percentUsed)}%
-                    </span>
-                  </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="text-3xl font-bold tracking-tight text-sky-600 dark:text-sky-400">
+                          {storageStats.totalFormatted}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {storageStats.totalFiles} files · {storageStats.percentUsed}% of 5GB
+                        </p>
+                      </div>
+                      {/* Circular Activity Ring */}
+                      <div className="relative w-12 h-12 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            className="text-sky-500/20"
+                            strokeWidth="3.5"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                          <path
+                            className="text-sky-500 transition-all duration-1000 ease-out"
+                            strokeDasharray={`${Math.max(4, storageStats.percentUsed)}, 100`}
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        </svg>
+                        <span className="absolute text-[10px] font-semibold text-sky-600 dark:text-sky-300">
+                          {Math.round(storageStats.percentUsed)}%
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1895,7 +1963,7 @@ export default function LrsysPortal() {
                       value={searchTerm}
                       onChange={e => setSearchTerm(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter') fetchRecords();
+                        if (e.key === 'Enter') fetchRecords(true, true);
                       }}
                       className="pl-9 pr-14 h-9 text-xs"
                     />
@@ -1932,7 +2000,39 @@ export default function LrsysPortal() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredRecords.length === 0 ? (
+                    {(isInitialLoading || isTableLoading) ? (
+                      Array.from({ length: 6 }).map((_, i) => (
+                        <TableRow key={`skeleton-row-${i}`} className="hover:bg-transparent animate-in fade-in duration-200">
+                          <TableCell className="text-center py-4">
+                            <Skeleton className="h-4 w-4 mx-auto rounded" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-6 w-20 rounded-full" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-24 rounded" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-44 rounded" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-36 rounded" />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Skeleton className="h-5 w-16 mx-auto rounded-full" />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Skeleton className="h-4 w-10 mx-auto rounded" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-20 rounded" />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Skeleton className="h-7 w-16 mx-auto rounded-lg" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : filteredRecords.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                           <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -2123,6 +2223,37 @@ export default function LrsysPortal() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Tally Running Skeleton State */}
+            {isTallyRunning && (
+              <Card className="shadow-sm border-primary/30 animate-in fade-in duration-200">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Skeleton className="h-5 w-52 rounded mb-1.5" />
+                      <Skeleton className="h-3.5 w-72 rounded" />
+                    </div>
+                    <Skeleton className="h-6 w-28 rounded-full" />
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-4 gap-3 p-3 bg-muted/40 rounded-xl">
+                    <Skeleton className="h-4 rounded" />
+                    <Skeleton className="h-4 rounded" />
+                    <Skeleton className="h-4 rounded" />
+                    <Skeleton className="h-4 rounded" />
+                  </div>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={`tally-skel-${i}`} className="grid grid-cols-4 gap-3 p-3 border-b border-border/30">
+                      <Skeleton className="h-4 rounded" />
+                      <Skeleton className="h-4 rounded" />
+                      <Skeleton className="h-4 rounded" />
+                      <Skeleton className="h-4 rounded" />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Tally Results View */}
             {tallyResult && (
@@ -2337,12 +2468,55 @@ export default function LrsysPortal() {
                 onMouseLeave={handleMouseUp}
                 onWheel={handleWheel}
               >
+                {/* Optical Scanning Skeleton Loader */}
+                {isImageLoading && selectedRecord?.filename && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-in fade-in duration-200">
+                    <div className="relative w-52 h-72 sm:w-64 sm:h-80 border-2 border-dashed border-sky-500/40 rounded-2xl bg-zinc-950/80 p-4 flex flex-col justify-between overflow-hidden shadow-2xl">
+                      {/* Animated Laser Scanning Line */}
+                      <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#38bdf8] animate-scan-laser pointer-events-none" />
+
+                      {/* Header skeleton */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <Skeleton className="h-4 w-24 rounded" />
+                          <Skeleton className="h-6 w-16 rounded-full bg-emerald-500/20" />
+                        </div>
+                        <Skeleton className="h-3 w-36 rounded" />
+                      </div>
+
+                      {/* Middle layout skeleton */}
+                      <div className="space-y-2.5 my-auto">
+                        <div className="grid grid-cols-2 gap-2">
+                          <Skeleton className="h-10 rounded-lg bg-zinc-900/90 border border-zinc-800" />
+                          <Skeleton className="h-10 rounded-lg bg-zinc-900/90 border border-zinc-800" />
+                        </div>
+                        <Skeleton className="h-3 w-full rounded" />
+                        <Skeleton className="h-3 w-5/6 rounded" />
+                        <Skeleton className="h-3 w-4/6 rounded" />
+                      </div>
+
+                      {/* Footer skeleton */}
+                      <div className="pt-2 border-t border-border/40 flex justify-between items-center">
+                        <Skeleton className="h-3 w-20 rounded" />
+                        <Skeleton className="h-3 w-14 rounded" />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-2 text-xs font-mono text-cyan-400">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                      <span className="tracking-wider">STREAMING HIGH-RES CUSDEC SCAN...</span>
+                    </div>
+                  </div>
+                )}
+
                 {selectedRecord?.filename ? (
                   <img
                     src={selectedRecord.imageUrl || `/api/images/${encodeURIComponent(selectedRecord.filename)}`}
                     alt="Customs Declaration Document"
                     draggable={false}
-                    className="max-w-full max-h-full object-contain pointer-events-none select-none"
+                    onLoad={() => setIsImageLoading(false)}
+                    onError={() => setIsImageLoading(false)}
+                    className={`max-w-full max-h-full object-contain pointer-events-none select-none transition-opacity duration-300 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
                     style={{
                       transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale}) rotate(${rotation}deg)`,
                       transition: isDragging ? 'none' : 'transform 0.15s ease-out'
@@ -2834,61 +3008,77 @@ export default function LrsysPortal() {
             </div>
 
             <div className="p-6 pt-2 text-center">
-              {/* Circular Storage Visualizer */}
-              <div className="relative w-28 h-28 mx-auto my-3 flex items-center justify-center">
-                <svg className="w-28 h-28 transform -rotate-90" viewBox="0 0 36 36">
-                  <path
-                    className="text-sky-500/15"
-                    strokeWidth="3"
-                    stroke="currentColor"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                  <path
-                    className="text-sky-500 transition-all duration-1000 ease-out"
-                    strokeDasharray={`${Math.max(5, storageStats.percentUsed)}, 100`}
-                    strokeWidth="3.2"
-                    strokeLinecap="round"
-                    stroke="currentColor"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                </svg>
-                <div className="absolute flex flex-col items-center">
-                  <HardDrive className="w-5 h-5 text-sky-500 mb-0.5" />
-                  <span className="text-base font-bold text-foreground">
-                    {storageStats.percentUsed}%
-                  </span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-                    Capacity
-                  </span>
-                </div>
-              </div>
-
-              <h3 className="text-lg font-bold text-foreground tracking-tight">
-                {storageStats.totalFormatted} of {storageStats.quotaFormatted} Used
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {storageStats.totalFiles} documents stored in {storageStats.provider === 'supabase' ? 'Supabase Bucket' : storageStats.provider === 'hybrid' ? 'Supabase + Local Cache' : 'Local Storage'}
-              </p>
-
-              {/* Breakdown Pills */}
-              <div className="grid grid-cols-2 gap-2 mt-4 text-left">
-                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                  <div className="text-[11px] text-muted-foreground font-medium">Cloud Storage</div>
-                  <div className="text-sm font-semibold text-foreground mt-0.5">
-                    {storageStats.cloudFormatted}
+              {isStorageLoading ? (
+                <div className="space-y-4 my-4 animate-in fade-in duration-200">
+                  <Skeleton className="w-24 h-24 rounded-full mx-auto" />
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-6 w-48 rounded mx-auto" />
+                    <Skeleton className="h-3.5 w-60 rounded mx-auto" />
                   </div>
-                  <div className="text-[10px] text-sky-500">{storageStats.cloudFiles} remote files</div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                  <div className="text-[11px] text-muted-foreground font-medium">Local Cache</div>
-                  <div className="text-sm font-semibold text-foreground mt-0.5">
-                    {storageStats.localFormatted}
+                  <div className="grid grid-cols-2 gap-2 mt-4 text-left">
+                    <Skeleton className="h-16 rounded-xl" />
+                    <Skeleton className="h-16 rounded-xl" />
                   </div>
-                  <div className="text-[10px] text-muted-foreground">{storageStats.localFiles} cached files</div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Circular Storage Visualizer */}
+                  <div className="relative w-28 h-28 mx-auto my-3 flex items-center justify-center">
+                    <svg className="w-28 h-28 transform -rotate-90" viewBox="0 0 36 36">
+                      <path
+                        className="text-sky-500/15"
+                        strokeWidth="3"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                      <path
+                        className="text-sky-500 transition-all duration-1000 ease-out"
+                        strokeDasharray={`${Math.max(5, storageStats.percentUsed)}, 100`}
+                        strokeWidth="3.2"
+                        strokeLinecap="round"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                    </svg>
+                    <div className="absolute flex flex-col items-center">
+                      <HardDrive className="w-5 h-5 text-sky-500 mb-0.5" />
+                      <span className="text-base font-bold text-foreground">
+                        {storageStats.percentUsed}%
+                      </span>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                        Capacity
+                      </span>
+                    </div>
+                  </div>
+
+                  <h3 className="text-lg font-bold text-foreground tracking-tight">
+                    {storageStats.totalFormatted} of {storageStats.quotaFormatted} Used
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {storageStats.totalFiles} documents stored in {storageStats.provider === 'supabase' ? 'Supabase Bucket' : storageStats.provider === 'hybrid' ? 'Supabase + Local Cache' : 'Local Storage'}
+                  </p>
+
+                  {/* Breakdown Pills */}
+                  <div className="grid grid-cols-2 gap-2 mt-4 text-left">
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                      <div className="text-[11px] text-muted-foreground font-medium">Cloud Storage</div>
+                      <div className="text-sm font-semibold text-foreground mt-0.5">
+                        {storageStats.cloudFormatted}
+                      </div>
+                      <div className="text-[10px] text-sky-500">{storageStats.cloudFiles} remote files</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                      <div className="text-[11px] text-muted-foreground font-medium">Local Cache</div>
+                      <div className="text-sm font-semibold text-foreground mt-0.5">
+                        {storageStats.localFormatted}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{storageStats.localFiles} cached files</div>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* iOS Action Menu List */}
               <div className="mt-5 space-y-2 text-left">
