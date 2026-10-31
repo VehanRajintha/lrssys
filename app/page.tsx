@@ -1783,144 +1783,234 @@ export default function LrsysPortal() {
       </Dialog>
 
       {/* ========================================================
-           SYSTEM SETTINGS MODAL DIALOG
+           iOS-STYLE SYSTEM SETTINGS ACTION SHEET MODAL
            ======================================================== */}
-      <Dialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-primary" />
-              <span>System & AI Configuration</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Configure Google Gemini Vision AI parameters and terminal ingestion settings.
-            </DialogDescription>
-          </DialogHeader>
+      {isSettingsModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setIsSettingsModalOpen(false)}
+        >
+          <div 
+            className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 max-h-[92vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* iOS Pull Indicator Pill */}
+            <div className="pt-3 pb-1 flex justify-center">
+              <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+            </div>
 
-          <form onSubmit={handleSaveSettings} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="apiKey" className="text-xs font-semibold">Gemini API Key (Primary)</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                value={settings.geminiApiKey || ''}
-                onChange={e => setSettings({ ...settings, geminiApiKey: e.target.value })}
-                placeholder="AIzaSy..."
-                className="text-xs font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Primary API key for extraction and verification.
+            {/* Header */}
+            <div className="px-6 pt-2 pb-4 text-center border-b border-border/40">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto mb-2.5 shadow-sm">
+                <Sliders className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground tracking-tight">System & AI Configuration</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Configure Google Gemini Vision AI parameters and cloud ingestion
               </p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="backupApiKey" className="text-xs font-semibold">Backup Gemini API Key (Auto-Failover)</Label>
-              <Input
-                id="backupApiKey"
-                type="password"
-                value={settings.geminiBackupApiKey || ''}
-                onChange={e => setSettings({ ...settings, geminiBackupApiKey: e.target.value })}
-                placeholder="AQ.Ab8RN6..."
-                className="text-xs font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Engages seamlessly if the primary API key reaches its daily quota limit.
-              </p>
-            </div>
+            {/* Form Body */}
+            <form onSubmit={handleSaveSettings} className="p-6 space-y-4 overflow-y-auto">
+              {/* Group 1: Gemini Vision AI Keys */}
+              <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 space-y-3">
+                <div className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <span>Gemini Vision Credentials</span>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="model" className="text-xs font-semibold">Gemini Model</Label>
-              <Input
-                id="model"
-                value={settings.geminiModel || 'gemini-3.5-flash-lite'}
-                onChange={e => setSettings({ ...settings, geminiModel: e.target.value })}
-                className="text-xs font-mono"
-              />
-            </div>
+                <div className="space-y-1">
+                  <Label htmlFor="apiKey" className="text-xs font-medium text-foreground">
+                    Primary API Key
+                  </Label>
+                  <Input
+                    id="apiKey"
+                    type="password"
+                    value={settings.geminiApiKey || ''}
+                    onChange={e => setSettings({ ...settings, geminiApiKey: e.target.value })}
+                    placeholder="AIzaSy... (or set via environment variable)"
+                    className="text-xs font-mono rounded-xl bg-background border-border/60"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Active key used for instant multi-pass vision extraction.
+                  </p>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="threshold" className="text-xs font-semibold">
-                Auto-Verification Threshold ({settings.autoVerifyThreshold}%)
-              </Label>
-              <Input
-                id="threshold"
-                type="number"
-                min="50"
-                max="100"
-                value={settings.autoVerifyThreshold}
-                onChange={e => setSettings({ ...settings, autoVerifyThreshold: Number(e.target.value) })}
-                className="text-xs"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Documents with confidence above this score are automatically marked Verified.
-              </p>
-            </div>
+                <div className="space-y-1">
+                  <Label htmlFor="backupApiKey" className="text-xs font-medium text-foreground">
+                    Backup API Key (Auto-Failover)
+                  </Label>
+                  <Input
+                    id="backupApiKey"
+                    type="password"
+                    value={settings.geminiBackupApiKey || ''}
+                    onChange={e => setSettings({ ...settings, geminiBackupApiKey: e.target.value })}
+                    placeholder="AQ.Ab8RN6..."
+                    className="text-xs font-mono rounded-xl bg-background border-border/60"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Engages automatically with zero sleep when the primary hits daily 429 quota.
+                  </p>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="concurrency" className="text-xs font-semibold">
-                Parallel OCR Workers ({settings.workerConcurrency})
-              </Label>
-              <Input
-                id="concurrency"
-                type="number"
-                min="1"
-                max="8"
-                value={settings.workerConcurrency}
-                onChange={e => setSettings({ ...settings, workerConcurrency: Number(e.target.value) })}
-                className="text-xs"
-              />
-            </div>
+                <div className="space-y-1.5 pt-1">
+                  <Label htmlFor="model" className="text-xs font-medium text-foreground">
+                    Gemini Vision Model
+                  </Label>
+                  <Input
+                    id="model"
+                    value={settings.geminiModel || 'gemini-3.5-flash-lite'}
+                    onChange={e => setSettings({ ...settings, geminiModel: e.target.value })}
+                    className="text-xs font-mono rounded-xl bg-background border-border/60"
+                  />
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'].map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, geminiModel: m })}
+                        className={`px-2.5 py-1 rounded-xl text-[10px] font-mono transition-all ${
+                          settings.geminiModel === m
+                            ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                            : 'bg-muted/60 text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setIsSettingsModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="default">
-                Save Settings
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              {/* Group 2: Automation & Performance */}
+              <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 space-y-3">
+                <div className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Pipeline Automation</span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="threshold" className="text-xs font-medium text-foreground">
+                      Auto-Verification Confidence
+                    </Label>
+                    <span className="text-xs font-bold text-emerald-500 font-mono">
+                      {settings.autoVerifyThreshold}%
+                    </span>
+                  </div>
+                  <Input
+                    id="threshold"
+                    type="number"
+                    min="50"
+                    max="100"
+                    value={settings.autoVerifyThreshold}
+                    onChange={e => setSettings({ ...settings, autoVerifyThreshold: Number(e.target.value) })}
+                    className="text-xs rounded-xl bg-background border-border/60"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Declarations scored above this threshold are automatically marked Verified.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="concurrency" className="text-xs font-medium text-foreground">
+                      Parallel Workers
+                    </Label>
+                    <span className="text-xs font-bold text-primary font-mono">
+                      {settings.workerConcurrency} concurrent
+                    </span>
+                  </div>
+                  <Input
+                    id="concurrency"
+                    type="number"
+                    min="1"
+                    max="8"
+                    value={settings.workerConcurrency}
+                    onChange={e => setSettings({ ...settings, workerConcurrency: Number(e.target.value) })}
+                    className="text-xs rounded-xl bg-background border-border/60"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Number of declarations processed simultaneously in parallel.
+                  </p>
+                </div>
+              </div>
+
+              {/* iOS Action Buttons */}
+              <div className="pt-2 space-y-2">
+                <Button 
+                  type="submit" 
+                  className="w-full py-3 rounded-2xl font-semibold bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98] transition-all shadow-md"
+                >
+                  Save Settings
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="w-full py-2.5 rounded-2xl font-semibold border-border/60 hover:bg-muted active:scale-[0.98] transition-all"
+                  onClick={() => setIsSettingsModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================
-           MOBILE SCANNER QR CODE MODAL DIALOG
+           iOS-STYLE MOBILE SCANNER QR CODE ACTION SHEET MODAL
            ======================================================== */}
-      <Dialog open={isMobileModalOpen} onOpenChange={setIsMobileModalOpen}>
-        <DialogContent className="max-w-sm text-center">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <QrCode className="w-5 h-5 text-primary" />
-              <span>Mobile Port Scanner</span>
-            </DialogTitle>
-            <DialogDescription className="text-center text-xs">
-              Scan with any mobile camera on the same Wi-Fi to snap and upload CusDec photos instantly.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-col items-center gap-3 py-4">
-            <div className="p-3 bg-white rounded-xl shadow-sm border">
-              <canvas ref={qrCanvasRef} />
+      {isMobileModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setIsMobileModalOpen(false)}
+        >
+          <div 
+            className="w-full max-w-sm bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 p-6 text-center"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* iOS Pull Indicator Pill */}
+            <div className="pb-3 flex justify-center">
+              <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
             </div>
 
-            <a
-              href={lanUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-mono font-medium text-primary hover:underline flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full"
-            >
-              <span>{lanUrl}</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto mb-2.5 shadow-sm">
+              <QrCode className="w-6 h-6" />
+            </div>
 
-          <DialogFooter className="sm:justify-center">
-            <Button variant="outline" onClick={() => setIsMobileModalOpen(false)}>
+            <h3 className="text-lg font-bold text-foreground tracking-tight">Mobile Port Scanner</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Scan with your phone camera on this Wi-Fi network to capture and upload CusDec photos instantly
+            </p>
+
+            <div className="my-5 flex flex-col items-center gap-3">
+              <div className="p-3.5 bg-white rounded-2xl shadow-md border">
+                <canvas ref={qrCanvasRef} />
+              </div>
+
+              <a
+                href={lanUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-mono font-semibold text-primary hover:underline flex items-center gap-1.5 bg-primary/10 px-3.5 py-1.5 rounded-full border border-primary/20 active:scale-95 transition-all"
+              >
+                <span>{lanUrl}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full py-2.5 rounded-2xl font-semibold border-border/60 hover:bg-muted active:scale-[0.98] transition-all"
+              onClick={() => setIsMobileModalOpen(false)}
+            >
               Done
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================
            iOS-STYLE STORAGE MANAGEMENT ACTION SHEET MODAL
