@@ -573,8 +573,14 @@ export default function LrsysPortal() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to purge storage');
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`Server returned status ${res.status}. Please ensure the server is running.`);
+      }
+      if (!res.ok) throw new Error(data.error || `Failed to purge storage (status ${res.status})`);
       showToast(data.message, 'success');
       if (data.stats) setStorageStats(data.stats);
       setConfirmPurgeAction(null);
@@ -748,7 +754,11 @@ export default function LrsysPortal() {
   const reprocessUnknownsWithAI = async () => {
     try {
       const res = await fetch('/api/records/reprocess-unknowns', { method: 'POST' });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try { data = text ? JSON.parse(text) : {}; } catch {
+        throw new Error(`Server returned status ${res.status}`);
+      }
       if (res.ok) {
         showToast(data.message || `Queued ${data.count} items for re-extraction.`, 'success');
         setSelectedRowIds(new Set());
