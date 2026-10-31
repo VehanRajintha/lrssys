@@ -121,10 +121,42 @@ export async function deleteDocumentFile(storagePath: string): Promise<boolean> 
   return false;
 }
 
+// In-memory telemetry cache with 60-second TTL to avoid slamming Supabase Storage on every file upload
+let cachedStorageStats: StorageStats | null = null;
+let lastStorageStatsFetch = 0;
+const STATS_CACHE_TTL_MS = 60 * 1000;
+
+export function incrementStorageCache(addedBytes: number): void {
+  if (!cachedStorageStats) return;
+  cachedStorageStats.totalFiles += 1;
+  cachedStorageStats.totalBytes += addedBytes;
+  cachedStorageStats.totalFormatted = formatBytes(cachedStorageStats.totalBytes);
+  cachedStorageStats.percentUsed = parseFloat(((cachedStorageStats.totalBytes / cachedStorageStats.quotaBytes) * 100).toFixed(2));
+  if (cachedStorageStats.provider === 'supabase' || cachedStorageStats.provider === 'hybrid') {
+    cachedStorageStats.cloudFiles += 1;
+    cachedStorageStats.cloudBytes += addedBytes;
+    cachedStorageStats.cloudFormatted = formatBytes(cachedStorageStats.cloudBytes);
+  } else {
+    cachedStorageStats.localFiles += 1;
+    cachedStorageStats.localBytes += addedBytes;
+    cachedStorageStats.localFormatted = formatBytes(cachedStorageStats.localBytes);
+  }
+}
+
+export function invalidateStorageCache(): void {
+  cachedStorageStats = null;
+  lastStorageStatsFetch = 0;
+}
+
 /**
- * Get comprehensive telemetry on storage bucket & local uploads usage
+ * Get comprehensive telemetry on storage bucket & local uploads usage with 60s in-memory caching
  */
-export async function getStorageStats(): Promise<StorageStats> {
+export async function getStorageStats(forceRefresh = false): Promise<StorageStats> {
+  const now = Date.now();
+  if (!forceRefresh && cachedStorageStats && (now - lastStorageStatsFetch < STATS_CACHE_TTL_MS)) {
+    return cachedStorageStats;
+  }
+
   const isCloud = isSupabaseConfigured();
   const supabase = getSupabase();
 
@@ -195,7 +227,7 @@ export async function getStorageStats(): Promise<StorageStats> {
   if (isCloud && localFiles > 0) provider = 'hybrid';
   else if (isCloud) provider = 'supabase';
 
-  return {
+  const stats: StorageStats = {
     provider,
     bucketName: BUCKET_NAME,
     totalFiles,
@@ -211,6 +243,10 @@ export async function getStorageStats(): Promise<StorageStats> {
     localBytes,
     localFormatted: formatBytes(localBytes)
   };
+
+  cachedStorageStats = stats;
+  lastStorageStatsFetch = Date.now();
+  return stats;
 }
 
 /**
@@ -281,6 +317,7 @@ export async function purgeStorageFiles(
     }
   }
 
+  invalidateStorageCache();
   return {
     deletedCount,
     freedBytes,

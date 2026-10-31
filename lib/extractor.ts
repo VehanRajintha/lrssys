@@ -29,16 +29,18 @@ let activeApiKeyIndex = 0;
  * 6. Master Registry Auto-Snap (Levenshtein match against registered legal entities with hash-map indexing)
  */
 export async function extractDocumentData(
-  imagePath: string,
-  settings: Partial<Settings> = {}
+  imageInput: string | Buffer,
+  settings: Partial<Settings> = {},
+  fallbackFilename?: string
 ): Promise<CusDecRecord> {
-  const filename = path.basename(imagePath);
+  const filename = fallbackFilename || (typeof imageInput === 'string' ? path.basename(imageInput) : 'document.jpg');
+  const imagePath = typeof imageInput === 'string' ? imageInput : filename;
 
   // Initialize master dictionary once in background
   await loadMasterDictionary();
 
-  // 1. Preprocess image with Sharp (single-pass dynamic range + 2048px optimal ceiling)
-  const preprocessed = await preprocessDocument(imagePath);
+  // 1. Preprocess image with Sharp directly from Buffer (zero network re-download!)
+  const preprocessed = await preprocessDocument(imageInput);
   const base64Image = preprocessed.buffer.toString('base64');
   const mimeType = preprocessed.mimeType;
 

@@ -59,8 +59,8 @@ export class ProcessingQueue extends EventEmitter {
     if (this.isPaused || this.isScheduling) return;
 
     const settings = db.getSettings();
-    // Allow true parallel worker concurrency up to 8 (matches UI setting)
-    const concurrency = Math.max(1, Math.min(8, settings.workerConcurrency || 4));
+    // Allow true parallel worker concurrency up to 12 (matches UI setting)
+    const concurrency = Math.max(1, Math.min(12, settings.workerConcurrency || 6));
 
     // Adaptive Rate Pacing: Only pause if a 429 was recently encountered
     const now = Date.now();

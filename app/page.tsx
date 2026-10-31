@@ -129,42 +129,79 @@ export default function LrsysPortal() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
-  // Dynamic identification of duplicate records (both explicit flag and matching declaration keys)
+  // Dynamic identification of duplicate records (strictly requires at least 3 matching critical fields)
   const duplicateIdSet = useMemo(() => {
-    const seenKeys = new Set<string>();
     const dupIds = new Set<string>();
+    const n = records.length;
+    if (n <= 1) return dupIds;
 
-    for (const r of records) {
-      if (r.isDuplicate) {
-        dupIds.add(r.id);
-        continue;
-      }
-      const hasValidStamp = r.greenStampNumber && r.greenStampNumber !== '000000' && r.greenStampNumber.length >= 4;
-      const hasValidRef = r.customsRefNumber && r.customsRefNumber !== 'UNKNOWN' && r.customsRefNumber.length >= 4;
-      
-      const keyByStampRef = (hasValidStamp && hasValidRef) ? `${r.greenStampNumber}_${r.customsRefNumber}` : null;
-      const keyByHash = r.fileHash ? `hash_${r.fileHash}` : null;
+    const seenGroup = new Set<number>();
 
-      let isDup = false;
-      if (keyByStampRef) {
-        if (seenKeys.has(keyByStampRef)) {
-          isDup = true;
-        } else {
-          seenKeys.add(keyByStampRef);
+    for (let i = 0; i < n; i++) {
+      if (seenGroup.has(i)) continue;
+      const primary = records[i];
+
+      const pStamp = primary.greenStampNumber && primary.greenStampNumber !== '000000' && primary.greenStampNumber.length >= 4 
+        ? primary.greenStampNumber.trim() 
+        : null;
+      const pRef = primary.customsRefNumber && primary.customsRefNumber !== 'UNKNOWN' && primary.customsRefNumber.length >= 4 
+        ? primary.customsRefNumber.replace(/\s+/g, '').toUpperCase() 
+        : null;
+      const pConsignee = primary.consigneeName && primary.consigneeName !== 'UNKNOWN' && primary.consigneeName.length >= 3 
+        ? primary.consigneeName.trim().toUpperCase() 
+        : null;
+      const pDeclarant = primary.declarantName && primary.declarantName !== 'NOT SPECIFIED' && primary.declarantName.length >= 3 
+        ? primary.declarantName.trim().toUpperCase() 
+        : null;
+      const pDate = primary.customsDate && primary.customsDate.trim().length >= 6 
+        ? primary.customsDate.trim() 
+        : null;
+
+      let groupHasDuplicates = false;
+
+      for (let j = i + 1; j < n; j++) {
+        if (seenGroup.has(j)) continue;
+        const candidate = records[j];
+
+        const cStamp = candidate.greenStampNumber && candidate.greenStampNumber !== '000000' && candidate.greenStampNumber.length >= 4 
+          ? candidate.greenStampNumber.trim() 
+          : null;
+        const cRef = candidate.customsRefNumber && candidate.customsRefNumber !== 'UNKNOWN' && candidate.customsRefNumber.length >= 4 
+          ? candidate.customsRefNumber.replace(/\s+/g, '').toUpperCase() 
+          : null;
+        const cConsignee = candidate.consigneeName && candidate.consigneeName !== 'UNKNOWN' && candidate.consigneeName.length >= 3 
+          ? candidate.consigneeName.trim().toUpperCase() 
+          : null;
+        const cDeclarant = candidate.declarantName && candidate.declarantName !== 'NOT SPECIFIED' && candidate.declarantName.length >= 3 
+          ? candidate.declarantName.trim().toUpperCase() 
+          : null;
+        const cDate = candidate.customsDate && candidate.customsDate.trim().length >= 6 
+          ? candidate.customsDate.trim() 
+          : null;
+
+        let matchCount = 0;
+        if (pStamp && cStamp && pStamp === cStamp) matchCount++;
+        if (pRef && cRef && pRef === cRef) matchCount++;
+        if (pConsignee && cConsignee && (pConsignee === cConsignee || pConsignee.includes(cConsignee) || cConsignee.includes(pConsignee))) matchCount++;
+        if (pDeclarant && cDeclarant && (pDeclarant === cDeclarant || pDeclarant.includes(cDeclarant) || cDeclarant.includes(pDeclarant))) matchCount++;
+        if (pDate && cDate && pDate === cDate) matchCount++;
+
+        // Duplicate match: Must match primary identifiers (Stamp + Ref) AND at least one party/date (reaching >= 3 matching critical fields)
+        const isMatch = (pStamp && cStamp && pStamp === cStamp && pRef && cRef && pRef === cRef && matchCount >= 3) ||
+                        (primary.fileHash && candidate.fileHash && primary.fileHash === candidate.fileHash && (pStamp === cStamp || pRef === cRef));
+
+        if (isMatch) {
+          dupIds.add(candidate.id);
+          seenGroup.add(j);
+          groupHasDuplicates = true;
         }
       }
-      if (keyByHash) {
-        if (seenKeys.has(keyByHash)) {
-          isDup = true;
-        } else {
-          seenKeys.add(keyByHash);
-        }
-      }
 
-      if (isDup) {
-        dupIds.add(r.id);
+      if (groupHasDuplicates) {
+        seenGroup.add(i); // Primary declaration remains clean and valid
       }
     }
+
     return dupIds;
   }, [records]);
 
@@ -190,17 +227,29 @@ export default function LrsysPortal() {
 
   // Remove all duplicate records from database & cache
   const handleRemoveDuplicates = async () => {
+    if (duplicateIdSet.size === 0) {
+      showToast('No duplicate declarations detected.', 'info');
+      return;
+    }
     if (!confirm(`Are you sure you want to clean up and remove ${duplicateIdSet.size} duplicate declaration(s)?`)) return;
     try {
       showToast('Removing duplicate records...', 'info');
-      const res = await fetch('/api/records/deduplicate', { method: 'POST' });
+      const res = await fetch('/api/records/delete-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(duplicateIdSet) })
+      });
       const data = await res.json();
       if (res.ok) {
-        showToast(data.message || 'Duplicates removed successfully', 'success');
+        showToast(data.message || `Removed ${duplicateIdSet.size} duplicate declaration(s)`, 'success');
         await fetchRecords();
         await fetchStorageStats();
       } else {
-        showToast(data.error || 'Deduplication failed', 'error');
+        const fb = await fetch('/api/records/deduplicate', { method: 'POST' });
+        const fbData = await fb.json();
+        showToast(fbData.message || 'Duplicates cleaned up', 'success');
+        await fetchRecords();
+        await fetchStorageStats();
       }
     } catch (err: any) {
       showToast('Deduplication failed', 'error', err.message);
@@ -289,7 +338,7 @@ export default function LrsysPortal() {
     useCustomApiKey: false,
     geminiModel: 'gemini-3.5-flash-lite',
     autoVerifyThreshold: 90,
-    workerConcurrency: 4,
+    workerConcurrency: 6,
     consignorConsigneeMode: 'both',
     preserveLeadingZeros: true
   });
@@ -341,7 +390,7 @@ export default function LrsysPortal() {
   // Background stream synthesizer & active queue telemetry
   useEffect(() => {
     if (queueStatus.isProcessing && workerStreams.length === 0) {
-      const concurrency = Math.max(1, settings.workerConcurrency || 4);
+      const concurrency = Math.max(1, settings.workerConcurrency || 6);
       setWorkerStreams(
         Array.from({ length: concurrency }, (_, i) => ({
           id: i + 1,
@@ -551,7 +600,7 @@ export default function LrsysPortal() {
     if (filter === 'NEEDS_REVIEW') return r.status === 'NEEDS_REVIEW';
     if (filter === 'VERIFIED') return r.status === 'VERIFIED';
     if (filter === 'CORRECTED') return r.status === 'CORRECTED';
-    if (filter === 'DUPLICATES') return duplicateIdSet.has(r.id) || r.isDuplicate;
+    if (filter === 'DUPLICATES') return duplicateIdSet.has(r.id);
     return true;
   });
 
@@ -704,8 +753,8 @@ export default function LrsysPortal() {
     let completedCount = 0;
     let failedCount = 0;
 
-    // Concurrency: use workerConcurrency setting (default 4)
-    const concurrency = Math.min(totalCount, Math.max(1, settings.workerConcurrency || 4));
+    // Concurrency: use workerConcurrency setting (default 6)
+    const concurrency = Math.min(totalCount, Math.max(1, settings.workerConcurrency || 6));
     const startTime = Date.now();
 
     setProcessingTelemetry({
@@ -1333,7 +1382,7 @@ export default function LrsysPortal() {
                   {/* Parallel Concurrency Badge */}
                   <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono">
                     <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>{workerStreams.length || settings.workerConcurrency || 4} Parallel Streams</span>
+                    <span>{workerStreams.length || settings.workerConcurrency || 6} Parallel Streams</span>
                   </div>
 
                   {/* Speed & ETA Badges */}
@@ -1946,7 +1995,7 @@ export default function LrsysPortal() {
                                     Corrected
                                   </Badge>
                                 )}
-                                {(duplicateIdSet.has(r.id) || r.isDuplicate) && (
+                                {duplicateIdSet.has(r.id) && (
                                   <Badge variant="outline" className="text-[10px] font-medium bg-amber-500/15 text-amber-500 dark:text-amber-400 border-amber-500/30 gap-1 px-1.5 py-0">
                                     <Copy className="w-2.5 h-2.5" />
                                     <span>Duplicate</span>
@@ -2675,7 +2724,7 @@ export default function LrsysPortal() {
                     id="concurrency"
                     type="number"
                     min="1"
-                    max="8"
+                    max="12"
                     value={settings.workerConcurrency}
                     onChange={e => setSettings({ ...settings, workerConcurrency: Number(e.target.value) })}
                     className="text-xs rounded-xl bg-background border-border/60"

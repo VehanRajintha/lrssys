@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: Settings = {
   useCustomApiKey: false,
   geminiModel: 'gemini-3.5-flash-lite',
   autoVerifyThreshold: 90,
-  workerConcurrency: 4,
+  workerConcurrency: 6,
   consignorConsigneeMode: 'both',
   preserveLeadingZeros: true
 };
@@ -96,7 +96,7 @@ function recordToRow(r: CusDecRecord) {
 
 function rowToRecord(row: any): CusDecRecord {
   const issues = Array.isArray(row.issues) ? row.issues : [];
-  const isDuplicate = issues.some((i: any) => String(i).toLowerCase().includes('duplicate')) || Boolean(row.is_duplicate);
+  const isDuplicate = Boolean(row.is_duplicate);
   return {
     id: row.id,
     filename: row.filename,
@@ -148,6 +148,7 @@ export async function initSupabaseSync(force = false): Promise<void> {
 
       if (!recError && recordsData) {
         recordsCache = recordsData.map(rowToRecord);
+        syncLedgerDuplicateFlags();
       }
 
       const { data: settingsData, error: setError } = await supabase
@@ -181,6 +182,7 @@ export async function initSupabaseSync(force = false): Promise<void> {
 
 export async function getFreshRecords(): Promise<CusDecRecord[]> {
   await initSupabaseSync(true);
+  syncLedgerDuplicateFlags();
   return recordsCache;
 }
 
@@ -227,38 +229,115 @@ function getCleanOriginalName(filename?: string): string {
     .trim();
 }
 
+/**
+ * Strict declaration duplicate matching based on at least 3 critical matching fields
+ * (Stamp Duty No, Customs Ref, Consignee Name, Declarant Name)
+ */
+export function isDuplicateDeclaration(a: Partial<CusDecRecord>, b: Partial<CusDecRecord>): boolean {
+  if (a.id && b.id && a.id === b.id) return false;
+
+  const aStamp = a.greenStampNumber && a.greenStampNumber !== '000000' && a.greenStampNumber.length >= 4 
+    ? a.greenStampNumber.trim() 
+    : null;
+  const bStamp = b.greenStampNumber && b.greenStampNumber !== '000000' && b.greenStampNumber.length >= 4 
+    ? b.greenStampNumber.trim() 
+    : null;
+
+  const aRef = a.customsRefNumber && a.customsRefNumber !== 'UNKNOWN' && a.customsRefNumber.length >= 4 
+    ? a.customsRefNumber.replace(/\s+/g, '').toUpperCase() 
+    : null;
+  const bRef = b.customsRefNumber && b.customsRefNumber !== 'UNKNOWN' && b.customsRefNumber.length >= 4 
+    ? b.customsRefNumber.replace(/\s+/g, '').toUpperCase() 
+    : null;
+
+  const aConsignee = a.consigneeName && a.consigneeName !== 'UNKNOWN' && a.consigneeName.length >= 3 
+    ? a.consigneeName.trim().toUpperCase() 
+    : null;
+  const bConsignee = b.consigneeName && b.consigneeName !== 'UNKNOWN' && b.consigneeName.length >= 3 
+    ? b.consigneeName.trim().toUpperCase() 
+    : null;
+
+  const aDeclarant = a.declarantName && a.declarantName !== 'NOT SPECIFIED' && a.declarantName.length >= 3 
+    ? a.declarantName.trim().toUpperCase() 
+    : null;
+  const bDeclarant = b.declarantName && b.declarantName !== 'NOT SPECIFIED' && b.declarantName.length >= 3 
+    ? b.declarantName.trim().toUpperCase() 
+    : null;
+
+  const aDate = a.customsDate && a.customsDate.trim().length >= 6 ? a.customsDate.trim() : null;
+  const bDate = b.customsDate && b.customsDate.trim().length >= 6 ? b.customsDate.trim() : null;
+
+  let matchPoints = 0;
+  if (aStamp && bStamp && aStamp === bStamp) matchPoints++;
+  if (aRef && bRef && aRef === bRef) matchPoints++;
+  if (aConsignee && bConsignee && (aConsignee === bConsignee || aConsignee.includes(bConsignee) || bConsignee.includes(aConsignee))) matchPoints++;
+  if (aDeclarant && bDeclarant && (aDeclarant === bDeclarant || aDeclarant.includes(bDeclarant) || bDeclarant.includes(aDeclarant))) matchPoints++;
+  if (aDate && bDate && aDate === bDate) matchPoints++;
+
+  // Must match Stamp + Customs Ref AND at least one other field (Consignee, Declarant, or Customs Date), reaching at least 3 matching critical fields
+  if (aStamp && bStamp && aStamp === bStamp && aRef && bRef && aRef === bRef && matchPoints >= 3) {
+    return true;
+  }
+
+  // Exact binary file hash match + at least stamp or ref match
+  if (a.fileHash && b.fileHash && a.fileHash === b.fileHash && (aStamp === bStamp || aRef === bRef)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Dynamically re-synchronizes duplicate flags across the entire recordsCache.
+ * Guarantees that a declaration is NEVER marked duplicate if it is the only one in the ledger.
+ * The earliest declaration in a cluster remains clean/primary, and redundant copies are flagged.
+ */
+export function syncLedgerDuplicateFlags(): void {
+  const n = recordsCache.length;
+  if (n === 0) return;
+
+  const seenGroup = new Set<number>();
+  const dupIds = new Set<string>();
+
+  for (let i = 0; i < n; i++) {
+    if (seenGroup.has(i)) continue;
+    const primary = recordsCache[i];
+    let hasDup = false;
+
+    for (let j = i + 1; j < n; j++) {
+      if (seenGroup.has(j)) continue;
+      if (isDuplicateDeclaration(primary, recordsCache[j])) {
+        recordsCache[j].isDuplicate = true;
+        dupIds.add(recordsCache[j].id);
+        seenGroup.add(j);
+        hasDup = true;
+      }
+    }
+
+    recordsCache[i].isDuplicate = false;
+    if (hasDup) {
+      seenGroup.add(i);
+    }
+  }
+
+  // Clear isDuplicate flag and issues for any record that does not belong to an active duplicate cluster
+  for (const r of recordsCache) {
+    if (!dupIds.has(r.id)) {
+      r.isDuplicate = false;
+      if (r.issues && r.issues.length > 0) {
+        r.issues = r.issues.filter(iss => !iss.toLowerCase().includes('duplicate'));
+      }
+    }
+  }
+}
+
 function findDuplicateIndex(record: Partial<CusDecRecord>): number {
   if (record.id) {
     const byId = recordsCache.findIndex(r => r.id === record.id);
     if (byId >= 0) return byId;
   }
 
-  if (record.fileHash) {
-    const byHash = recordsCache.findIndex(r => r.fileHash && r.fileHash === record.fileHash);
-    if (byHash >= 0) return byHash;
-  }
-
-  const recOriginal = (record.originalName || getCleanOriginalName(record.filename)).toLowerCase();
-  if (recOriginal && recOriginal.length > 3) {
-    const byName = recordsCache.findIndex(r => {
-      const existingName = (r.originalName || getCleanOriginalName(r.filename)).toLowerCase();
-      return existingName && existingName === recOriginal;
-    });
-    if (byName >= 0) return byName;
-  }
-
-  const hasValidRef = record.customsRefNumber && record.customsRefNumber !== 'UNKNOWN' && record.customsRefNumber.length >= 4;
-  const hasValidStamp = record.greenStampNumber && record.greenStampNumber !== '000000' && record.greenStampNumber.length >= 4;
-
-  if (hasValidRef && hasValidStamp) {
-    const byBoth = recordsCache.findIndex(r =>
-      r.customsRefNumber === record.customsRefNumber &&
-      r.greenStampNumber === record.greenStampNumber
-    );
-    if (byBoth >= 0) return byBoth;
-  }
-
-  return -1;
+  return recordsCache.findIndex(existing => isDuplicateDeclaration(record, existing));
 }
 
 export async function saveRecord(record: CusDecRecord): Promise<CusDecRecord> {
@@ -295,6 +374,7 @@ export async function saveRecord(record: CusDecRecord): Promise<CusDecRecord> {
     recordsCache.unshift(saved);
   }
 
+  syncLedgerDuplicateFlags();
   scheduleRecordsSave();
 
   // Await Supabase Sync so data is guaranteed committed in database before responding
@@ -337,6 +417,7 @@ export async function deleteRecord(id: string): Promise<boolean> {
   const initialLen = recordsCache.length;
   recordsCache = recordsCache.filter(r => r.id !== id);
   if (recordsCache.length !== initialLen) {
+    syncLedgerDuplicateFlags();
     flushRecordsSync();
 
     if (isSupabaseConfigured()) {
@@ -361,6 +442,7 @@ export async function deleteRecords(ids: string[]): Promise<number> {
   recordsCache = recordsCache.filter(r => !idSet.has(r.id));
   const deletedCount = initialLen - recordsCache.length;
   if (deletedCount > 0) {
+    syncLedgerDuplicateFlags();
     flushRecordsSync();
 
     if (isSupabaseConfigured()) {
@@ -399,32 +481,26 @@ export async function clearAllRecords(): Promise<boolean> {
 }
 
 export async function deduplicateExistingRecords(): Promise<number> {
-  const seen = new Map<string, CusDecRecord>();
   const duplicateIdsToRemove: string[] = [];
+  const n = recordsCache.length;
+  const markedDups = new Set<number>();
 
-  for (const r of recordsCache) {
-    const stampRefKey = (r.customsRefNumber && r.greenStampNumber && r.customsRefNumber !== 'UNKNOWN' && r.greenStampNumber !== '000000')
-      ? `${r.customsRefNumber.trim()}_${r.greenStampNumber.trim()}`
-      : null;
-    const nameKey = r.originalName ? r.originalName.trim().toLowerCase() : null;
-    const hashKey = r.fileHash ? r.fileHash.trim() : null;
-
-    const key = stampRefKey || hashKey || nameKey || r.id;
-
-    if (seen.has(key)) {
-      duplicateIdsToRemove.push(r.id);
-    } else {
-      seen.set(key, {
-        ...r,
-        isDuplicate: false,
-        issues: Array.isArray(r.issues) ? r.issues.filter(i => !i.toLowerCase().includes('duplicate')) : []
-      });
+  for (let i = 0; i < n; i++) {
+    if (markedDups.has(i)) continue;
+    const primary = recordsCache[i];
+    for (let j = i + 1; j < n; j++) {
+      if (markedDups.has(j)) continue;
+      if (isDuplicateDeclaration(primary, recordsCache[j])) {
+        duplicateIdsToRemove.push(recordsCache[j].id);
+        markedDups.add(j);
+      }
     }
   }
 
   if (duplicateIdsToRemove.length > 0) {
     const idSet = new Set(duplicateIdsToRemove);
     recordsCache = recordsCache.filter(r => !idSet.has(r.id));
+    syncLedgerDuplicateFlags();
     flushRecordsSync();
 
     if (isSupabaseConfigured()) {

@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import queue from '@/lib/queue';
 import * as db from '@/lib/db';
 import * as extractor from '@/lib/extractor';
-import { uploadDocumentFile, getStorageStats } from '@/lib/storage';
+import { uploadDocumentFile, getStorageStats, incrementStorageCache } from '@/lib/storage';
 import { CusDecRecord } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -38,47 +38,52 @@ export async function POST(request: NextRequest) {
         const cleanBase = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
         const filename = `${cleanBase}_${Date.now()}${ext}`;
 
-        const stored = await uploadDocumentFile(buffer, filename, file.type || 'image/jpeg');
+        // High-speed parallel execution: Upload to cloud storage & run Vision AI in parallel
+        const [stored, extractionResult] = await Promise.all([
+          uploadDocumentFile(buffer, filename, file.type || 'image/jpeg'),
+          extractor.extractDocumentData(buffer, settings, filename).catch((err: any) => {
+            console.error(`[Extraction error on ${file.name}]:`, err.message);
+            const fallback: CusDecRecord = {
+              id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+              filename,
+              imagePath: '',
+              imageUrl: '',
+              originalName: file.name,
+              fileHash,
+              greenStampNumber: '000000',
+              customsRefNumber: 'UNKNOWN',
+              customsDate: new Date().toLocaleDateString('en-GB'),
+              consigneeName: 'UNKNOWN CONSIGNEE',
+              consigneeTIN: '',
+              declarantName: 'UNKNOWN DECLARANT',
+              declarantTIN: '',
+              blNumber: '',
+              packagesCount: '',
+              goodsDescription: '',
+              confidence: 25,
+              status: 'NEEDS_REVIEW',
+              issues: [`Extraction error: ${err.message}`],
+              boundingBoxes: null,
+              manualCorrection: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            return fallback;
+          })
+        ]);
+
         const targetPath = stored.isCloud ? stored.publicUrl : stored.storagePath;
-
-        let extractedRecord: CusDecRecord;
-        try {
-          extractedRecord = await extractor.extractDocumentData(targetPath, settings);
-        } catch (err: any) {
-          console.error(`[Extraction error on ${file.name}]:`, err.message);
-          extractedRecord = {
-            id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-            filename,
-            imagePath: targetPath,
-            imageUrl: stored.publicUrl,
-            originalName: file.name,
-            fileHash,
-            greenStampNumber: '000000',
-            customsRefNumber: 'UNKNOWN',
-            customsDate: new Date().toLocaleDateString('en-GB'),
-            consigneeName: 'UNKNOWN CONSIGNEE',
-            consigneeTIN: '',
-            declarantName: 'UNKNOWN DECLARANT',
-            declarantTIN: '',
-            blNumber: '',
-            packagesCount: '',
-            goodsDescription: '',
-            confidence: 25,
-            status: 'NEEDS_REVIEW',
-            issues: [`Extraction error: ${err.message}`],
-            boundingBoxes: null,
-            manualCorrection: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-        }
-
-        extractedRecord.originalName = file.name;
-        extractedRecord.fileHash = fileHash;
-        extractedRecord.imageUrl = stored.publicUrl;
+        const extractedRecord: CusDecRecord = {
+          ...extractionResult,
+          originalName: file.name,
+          fileHash,
+          imageUrl: stored.publicUrl,
+          imagePath: targetPath
+        };
 
         const saved = await db.saveRecord(extractedRecord);
         processedRecords.push(saved);
+        incrementStorageCache(buffer.length);
       }
 
       const storageStats = await getStorageStats();
