@@ -136,3 +136,13 @@
 .animate-dropzone-spin {
   animation: dropzoneSpin 12s linear infinite;
 }
+
+/* Apple iOS Progress Shimmer Sheen */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
