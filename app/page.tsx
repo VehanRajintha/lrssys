@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QRCode from 'qrcode';
+import JSZip from 'jszip';
 import { CusDecRecord, Settings, QueueStatus, Stats, TallyResult, TallyRecord } from '@/lib/types';
 
 // shadcn/ui components
@@ -69,7 +70,8 @@ import {
   Copy,
   ScanLine,
   ArrowUpRight,
-  HardDrive
+  HardDrive,
+  Lock
 } from 'lucide-react';
 
 interface Toast {
@@ -178,6 +180,8 @@ export default function LrsysPortal() {
   const [settings, setSettings] = useState<Settings>({
     geminiApiKey: '',
     geminiBackupApiKey: '',
+    customApiKey: '',
+    useCustomApiKey: false,
     geminiModel: 'gemini-3.5-flash-lite',
     autoVerifyThreshold: 90,
     workerConcurrency: 4,
@@ -525,8 +529,78 @@ export default function LrsysPortal() {
   // -------------------------------------------------------------
   // UPLOADS & DRAG AND DROP
   // -------------------------------------------------------------
+  const handleZipFile = async (zipFile: File) => {
+    try {
+      showToast(`Unpacking ZIP: ${zipFile.name}...`, 'info');
+      const zip = new JSZip();
+      const loadedZip = await zip.loadAsync(zipFile);
+      const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+
+      const imageFiles: File[] = [];
+      const filenames = Object.keys(loadedZip.files);
+
+      for (const filename of filenames) {
+        const entry = loadedZip.files[filename];
+        if (entry.dir) continue;
+        const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+        if (validExts.includes(ext)) {
+          const blob = await entry.async('blob');
+          const cleanName = filename.split('/').pop() || filename;
+          const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.pdf' ? 'application/pdf' : 'image/jpeg';
+          const file = new File([blob], cleanName, { type: mimeType });
+          imageFiles.push(file);
+        }
+      }
+
+      if (imageFiles.length === 0) {
+        showToast('No valid images in ZIP', 'warning', 'ZIP must contain JPG, PNG, WEBP, or PDF files');
+        return;
+      }
+
+      showToast(`Found ${imageFiles.length} declaration images. Ingesting in batches...`, 'info');
+
+      // Upload in batches of 4 to guarantee zero Netlify timeouts and bypass the 6MB server payload limit
+      const batchSize = 4;
+      for (let i = 0; i < imageFiles.length; i += batchSize) {
+        const batch = imageFiles.slice(i, i + batchSize);
+        const formData = new FormData();
+        batch.forEach(f => formData.append('documents', f));
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const text = await res.text();
+        let data: any = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error(text || `Server returned ${res.status}`);
+        }
+
+        if (!res.ok) {
+          throw new Error(data.error || `Upload failed with status ${res.status}`);
+        }
+      }
+
+      showToast(`Successfully uploaded ${imageFiles.length} images from ZIP!`, 'success');
+      fetchRecords();
+      fetchStorageStats();
+    } catch (err: any) {
+      showToast('ZIP Upload Failed', 'error', err.message);
+    }
+  };
+
   const handleFileUpload = async (files: FileList | null, endpoint: string, fieldName: string) => {
     if (!files || files.length === 0) return;
+
+    // Client-side ZIP unpacking to prevent Netlify 6MB body limit
+    if (fieldName === 'zipfile' || (files.length === 1 && files[0].name.toLowerCase().endsWith('.zip'))) {
+      await handleZipFile(files[0]);
+      return;
+    }
+
     const formData = new FormData();
     if (fieldName === 'documents') {
       for (let i = 0; i < files.length; i++) {
@@ -542,10 +616,18 @@ export default function LrsysPortal() {
         method: 'POST',
         body: formData
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(text || `Server returned ${res.status} ${res.statusText}`);
+      }
+
+      if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
       showToast(`Upload complete! Processing in queue.`, 'success');
       fetchRecords();
+      fetchStorageStats();
     } catch (err: any) {
       showToast('Upload error', 'error', err.message);
     }
@@ -600,7 +682,7 @@ export default function LrsysPortal() {
 
     const isZip = files[0].name.toLowerCase().endsWith('.zip');
     if (isZip) {
-      await handleFileUpload(files, '/api/upload-zip', 'zipfile');
+      await handleZipFile(files[0]);
     } else {
       await handleFileUpload(files, '/api/upload', 'documents');
     }
@@ -937,7 +1019,12 @@ export default function LrsysPortal() {
                     ref={zipInputRef}
                     accept=".zip"
                     className="hidden"
-                    onChange={e => handleFileUpload(e.target.files, '/api/upload-zip', 'zipfile')}
+                    onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleZipFile(e.target.files[0]);
+                        e.target.value = '';
+                      }
+                    }}
                   />
 
                   <Button
@@ -1813,47 +1900,117 @@ export default function LrsysPortal() {
             {/* Form Body */}
             <form onSubmit={handleSaveSettings} className="p-6 space-y-4 overflow-y-auto">
               {/* Group 1: Gemini Vision AI Keys */}
-              <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 space-y-3">
-                <div className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  <span>Gemini Vision Credentials</span>
+              <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 space-y-3.5">
+                <div className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    <span>Gemini Vision Credentials</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono border-border/60 text-muted-foreground">
+                    Multi-Pass Engine
+                  </Badge>
                 </div>
 
+                {/* Primary API Key (Protected System Key) */}
                 <div className="space-y-1">
-                  <Label htmlFor="apiKey" className="text-xs font-medium text-foreground">
-                    Primary API Key
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <Lock className="w-3 h-3 text-muted-foreground" />
+                      <span>Primary API Key</span>
+                    </Label>
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/50">
+                      Pre-configured System Key
+                    </span>
+                  </div>
                   <Input
-                    id="apiKey"
                     type="password"
-                    value={settings.geminiApiKey || ''}
-                    onChange={e => setSettings({ ...settings, geminiApiKey: e.target.value })}
-                    placeholder="AIzaSy... (or set via environment variable)"
-                    className="text-xs font-mono rounded-xl bg-background border-border/60"
+                    readOnly
+                    disabled
+                    value="AIzaSy••••••••••••••••••••••••••••••••••••"
+                    className="text-xs font-mono rounded-xl bg-background/50 border-border/40 text-muted-foreground/80 cursor-not-allowed select-none"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Active key used for instant multi-pass vision extraction.
+                    Active key used for instant multi-pass vision extraction (configured in environment).
                   </p>
                 </div>
 
+                {/* Backup API Key (Protected Auto-Failover Key) */}
                 <div className="space-y-1">
-                  <Label htmlFor="backupApiKey" className="text-xs font-medium text-foreground">
-                    Backup API Key (Auto-Failover)
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <Lock className="w-3 h-3 text-muted-foreground" />
+                      <span>Backup API Key (Auto-Failover)</span>
+                    </Label>
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/50">
+                      Pre-configured System Key
+                    </span>
+                  </div>
                   <Input
-                    id="backupApiKey"
                     type="password"
-                    value={settings.geminiBackupApiKey || ''}
-                    onChange={e => setSettings({ ...settings, geminiBackupApiKey: e.target.value })}
-                    placeholder="AQ.Ab8RN6..."
-                    className="text-xs font-mono rounded-xl bg-background border-border/60"
+                    readOnly
+                    disabled
+                    value="AQ.Ab8RN6••••••••••••••••••••••••••••••••••••"
+                    className="text-xs font-mono rounded-xl bg-background/50 border-border/40 text-muted-foreground/80 cursor-not-allowed select-none"
                   />
                   <p className="text-[11px] text-muted-foreground">
                     Engages automatically with zero sleep when the primary hits daily 429 quota.
                   </p>
                 </div>
 
-                <div className="space-y-1.5 pt-1">
+                {/* Custom API Key Override Section */}
+                <div className="pt-3 border-t border-border/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="useCustomApiKey" className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        id="useCustomApiKey"
+                        type="checkbox"
+                        checked={Boolean(settings.useCustomApiKey)}
+                        onChange={e => setSettings({ ...settings, useCustomApiKey: e.target.checked })}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary accent-primary cursor-pointer"
+                      />
+                      <span className="text-xs font-semibold text-foreground">
+                        Use Custom API Key Override
+                      </span>
+                    </label>
+                    {settings.useCustomApiKey ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] py-0.5 px-2">
+                        Custom Key Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] py-0.5 px-2 text-muted-foreground border-border/60">
+                        System Keys Active
+                      </Badge>
+                    )}
+                  </div>
+
+                  <Input
+                    id="customApiKey"
+                    type="password"
+                    placeholder="Enter custom Gemini API key (AIzaSy...)"
+                    value={settings.customApiKey || ''}
+                    onChange={e => setSettings({ ...settings, customApiKey: e.target.value })}
+                    disabled={!settings.useCustomApiKey}
+                    className={`text-xs font-mono rounded-xl bg-background border-border/60 transition-all ${
+                      settings.useCustomApiKey
+                        ? 'border-emerald-500/60 shadow-sm focus:border-emerald-500'
+                        : 'opacity-40 cursor-not-allowed'
+                    }`}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {settings.useCustomApiKey ? (
+                      <span className="text-emerald-400 font-medium">
+                        ⚡ Override active: The system will use exactly this custom key instead of the pre-configured system keys.
+                      </span>
+                    ) : (
+                      <span>
+                        Tick the box to use your own Gemini API key. When unticked, the system uses the pre-configured keys above.
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Gemini Vision Model */}
+                <div className="space-y-1.5 pt-2 border-t border-border/50">
                   <Label htmlFor="model" className="text-xs font-medium text-foreground">
                     Gemini Vision Model
                   </Label>

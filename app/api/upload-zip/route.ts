@@ -5,6 +5,9 @@ import AdmZip from 'adm-zip';
 import queue from '@/lib/queue';
 import { uploadDocumentFile } from '@/lib/storage';
 
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();

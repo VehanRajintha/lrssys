@@ -40,6 +40,8 @@ export interface CusDecRecord {
 export interface Settings {
   geminiApiKey: string;
   geminiBackupApiKey?: string;
+  customApiKey?: string;
+  useCustomApiKey?: boolean;
   geminiModel: string;
   autoVerifyThreshold: number;
   workerConcurrency: number;

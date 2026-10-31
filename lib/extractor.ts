@@ -42,9 +42,15 @@ export async function extractDocumentData(
   const base64Image = preprocessed.buffer.toString('base64');
   const mimeType = preprocessed.mimeType;
 
-  const primaryKey = (settings.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
-  const backupKey = (settings.geminiBackupApiKey || process.env.GEMINI_BACKUP_API_KEY || '').trim();
-  const apiKeys = [primaryKey, backupKey].filter(k => k && k.length > 10);
+  let apiKeys: string[] = [];
+  if (settings.useCustomApiKey && settings.customApiKey && settings.customApiKey.trim().length > 10) {
+    console.log(`[AI Extraction] User custom API key override active. Using custom key...`);
+    apiKeys = [settings.customApiKey.trim()];
+  } else {
+    const primaryKey = (process.env.GEMINI_API_KEY || settings.geminiApiKey || '').trim();
+    const backupKey = (process.env.GEMINI_BACKUP_API_KEY || settings.geminiBackupApiKey || '').trim();
+    apiKeys = [primaryKey, backupKey].filter(k => k && k.length > 10);
+  }
 
   const selectedModel = settings.geminiModel || 'gemini-3.5-flash-lite';
 

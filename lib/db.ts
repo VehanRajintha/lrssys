@@ -14,6 +14,8 @@ if (!fs.existsSync(DATA_DIR)) {
 const DEFAULT_SETTINGS: Settings = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiBackupApiKey: process.env.GEMINI_BACKUP_API_KEY || '',
+  customApiKey: '',
+  useCustomApiKey: false,
   geminiModel: 'gemini-3.5-flash-lite',
   autoVerifyThreshold: 90,
   workerConcurrency: 4,
@@ -429,7 +431,11 @@ export function getSettings(): Settings {
 export function updateSettings(updates: Partial<Settings>): Settings {
   settingsCache = {
     ...settingsCache,
-    ...updates
+    ...updates,
+    geminiApiKey: process.env.GEMINI_API_KEY || settingsCache.geminiApiKey,
+    geminiBackupApiKey: process.env.GEMINI_BACKUP_API_KEY || settingsCache.geminiBackupApiKey,
+    customApiKey: updates.customApiKey !== undefined ? updates.customApiKey : (settingsCache.customApiKey || ''),
+    useCustomApiKey: updates.useCustomApiKey !== undefined ? Boolean(updates.useCustomApiKey) : (settingsCache.useCustomApiKey || false)
   };
   writeJsonFile(SETTINGS_FILE, settingsCache);
 
