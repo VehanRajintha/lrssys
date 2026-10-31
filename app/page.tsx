@@ -100,6 +100,7 @@ interface Toast {
   type: 'success' | 'warning' | 'info' | 'error';
   message: string;
   subtext?: string;
+  isExiting?: boolean;
 }
 
 export default function LrsysPortal() {
@@ -109,15 +110,23 @@ export default function LrsysPortal() {
   // Navigation: Declarations vs Tally
   const [activeSection, setActiveSection] = useState<'ocr' | 'tally'>('ocr');
 
-  // Toasts
+  // Toasts with smooth motion appear & disappear in top-right corner
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const showToast = useCallback((message: string, type: 'success' | 'warning' | 'info' | 'error' = 'info', subtext?: string) => {
-    const id = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 5);
-    setToasts(prev => [...prev.slice(-2), { id, type, message, subtext }]);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, isExiting: true } : t));
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    }, 350);
   }, []);
+
+  const showToast = useCallback((message: string, type: 'success' | 'warning' | 'info' | 'error' = 'info', subtext?: string) => {
+    const id = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 5);
+    setToasts(prev => [...prev.slice(-3), { id, type, message, subtext, isExiting: false }]);
+    setTimeout(() => {
+      dismissToast(id);
+    }, 3800);
+  }, [dismissToast]);
 
   // Drag and drop state
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -1237,22 +1246,65 @@ export default function LrsysPortal() {
       className="min-h-screen flex flex-col bg-background text-foreground"
     >
       {/* ========================================================
-           FLOATING TOAST NOTIFICATIONS (shadcn style)
+           TOP-RIGHT FLOATING TOAST NOTIFICATIONS (Smooth Motion)
            ======================================================== */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none">
+      <div className="fixed top-5 right-5 z-50 flex flex-col items-end gap-2.5 pointer-events-none max-w-sm w-full px-4 sm:px-0">
         {toasts.map(t => (
           <div
             key={t.id}
-            className="pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded-full border bg-popover/90 text-popover-foreground shadow-lg backdrop-blur-md text-sm font-medium animate-in fade-in-0 slide-in-from-top-4"
+            onClick={() => dismissToast(t.id)}
+            className={`pointer-events-auto cursor-pointer flex items-center justify-between gap-3 p-3.5 pl-4 pr-3 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all duration-300 ease-out transform ${
+              t.isExiting
+                ? 'opacity-0 translate-x-12 scale-95 pointer-events-none'
+                : 'opacity-100 translate-x-0 scale-100 animate-in fade-in-0 slide-in-from-right-8 duration-300'
+            } ${
+              t.type === 'success'
+                ? 'bg-zinc-950/95 dark:bg-black/95 border-emerald-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(16,185,129,0.15)]'
+                : t.type === 'error'
+                ? 'bg-zinc-950/95 dark:bg-black/95 border-rose-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(244,63,94,0.15)]'
+                : t.type === 'warning'
+                ? 'bg-zinc-950/95 dark:bg-black/95 border-amber-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(245,158,11,0.15)]'
+                : 'bg-zinc-950/95 dark:bg-black/95 border-sky-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(14,165,233,0.15)]'
+            }`}
           >
-            {t.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-            {t.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-            {t.type === 'error' && <XCircle className="w-4 h-4 text-destructive" />}
-            {t.type === 'info' && <Activity className="w-4 h-4 text-primary" />}
-            <div className="flex flex-col">
-              <span className="font-semibold">{t.message}</span>
-              {t.subtext && <span className="text-xs text-muted-foreground">{t.subtext}</span>}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                t.type === 'success'
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : t.type === 'error'
+                  ? 'bg-rose-500/15 text-rose-400'
+                  : t.type === 'warning'
+                  ? 'bg-amber-500/15 text-amber-400'
+                  : 'bg-sky-500/15 text-sky-400'
+              }`}>
+                {t.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
+                {t.type === 'warning' && <AlertTriangle className="w-4 h-4" />}
+                {t.type === 'error' && <XCircle className="w-4 h-4" />}
+                {t.type === 'info' && <Activity className="w-4 h-4" />}
+              </div>
+              <div className="flex flex-col min-w-0 pr-1">
+                <span className="text-xs font-semibold tracking-tight text-foreground leading-snug">
+                  {t.message}
+                </span>
+                {t.subtext && (
+                  <span className="text-[11px] text-muted-foreground truncate leading-normal mt-0.5">
+                    {t.subtext}
+                  </span>
+                )}
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissToast(t.id);
+              }}
+              className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-white/10 active:scale-95 transition-all flex-shrink-0"
+              title="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         ))}
       </div>
