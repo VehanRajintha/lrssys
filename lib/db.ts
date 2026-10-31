@@ -7,8 +7,12 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (err: any) {
+  console.warn(`[Local DB Directory Init]: ${err.message}`);
 }
 
 const DEFAULT_SETTINGS: Settings = {

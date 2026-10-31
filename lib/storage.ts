@@ -78,18 +78,27 @@ export async function uploadDocumentFile(
   }
 
   // Local Disk Fallback
-  if (!fs.existsSync(LOCAL_UPLOADS_DIR)) {
-    fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(LOCAL_UPLOADS_DIR)) {
+      fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true });
+    }
+
+    const localFilePath = path.join(LOCAL_UPLOADS_DIR, filename);
+    fs.writeFileSync(localFilePath, buffer);
+
+    return {
+      publicUrl: `/api/images/${encodeURIComponent(filename)}`,
+      storagePath: localFilePath,
+      isCloud: false
+    };
+  } catch (diskErr: any) {
+    console.warn(`[Local Disk Fallback Warning]: ${diskErr.message}`);
+    return {
+      publicUrl: '',
+      storagePath: filename,
+      isCloud: false
+    };
   }
-
-  const localFilePath = path.join(LOCAL_UPLOADS_DIR, filename);
-  fs.writeFileSync(localFilePath, buffer);
-
-  return {
-    publicUrl: `/api/images/${encodeURIComponent(filename)}`,
-    storagePath: localFilePath,
-    isCloud: false
-  };
 }
 
 /**
