@@ -1,17 +1,20 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-// Prefer service role key on server-side to bypass RLS policies, fallback to anon key
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
-
 let client: SupabaseClient | null = null;
 
+function getCredentials() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+  return { url, key };
+}
+
 export function isSupabaseConfigured(): boolean {
+  const { url, key } = getCredentials();
   return Boolean(
-    supabaseUrl && 
-    supabaseUrl.startsWith('https://') && 
-    supabaseKey && 
-    supabaseKey.length > 20
+    url && 
+    url.startsWith('https://') && 
+    key && 
+    key.length > 20
   );
 }
 
@@ -20,7 +23,8 @@ export function getSupabase(): SupabaseClient | null {
     return null;
   }
   if (!client) {
-    client = createClient(supabaseUrl, supabaseKey, {
+    const { url, key } = getCredentials();
+    client = createClient(url, key, {
       auth: {
         persistSession: false,
         autoRefreshToken: false

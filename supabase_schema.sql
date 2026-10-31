@@ -100,3 +100,4 @@ USING (bucket_id = 'cusdec-documents');
 CREATE POLICY "Allow Document Deletes" 
 ON storage.objects FOR DELETE 
 USING (bucket_id = 'cusdec-documents');
+
