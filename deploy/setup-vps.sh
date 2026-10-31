@@ -95,7 +95,18 @@ chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR"
 
 # 9. Install Dependencies and Build Next.js
 echo -e "${GREEN}[8/9] Installing dependencies and building production app...${NC}"
-sudo -u "$ACTUAL_USER" npm install --no-audit --prefer-offline
+# If node_modules is corrupted from an earlier aborted installation, clean it first
+if [ -d "$PROJECT_DIR/node_modules" ] && [ ! -d "$PROJECT_DIR/node_modules/next" ]; then
+  echo -e "${YELLOW}Cleaning corrupted node_modules from earlier interrupted installation...${NC}"
+  rm -rf "$PROJECT_DIR/node_modules"
+fi
+
+if ! sudo -u "$ACTUAL_USER" npm install --no-audit; then
+  echo -e "${YELLOW}npm install encountered lock error. Purging corrupted node_modules and retrying...${NC}"
+  rm -rf "$PROJECT_DIR/node_modules"
+  sudo -u "$ACTUAL_USER" npm install --no-audit
+fi
+
 sudo -u "$ACTUAL_USER" env NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # 10. Configure Nginx Reverse Proxy
