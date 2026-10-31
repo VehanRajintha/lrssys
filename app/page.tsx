@@ -68,7 +68,8 @@ import {
   ExternalLink,
   Copy,
   ScanLine,
-  ArrowUpRight
+  ArrowUpRight,
+  HardDrive
 } from 'lucide-react';
 
 interface Toast {
@@ -152,6 +153,24 @@ export default function LrsysPortal() {
   const [isInspectionModalOpen, setIsInspectionModalOpen] = useState(false);
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
+  const [isPurgingStorage, setIsPurgingStorage] = useState(false);
+  const [confirmPurgeAction, setConfirmPurgeAction] = useState<'all' | 'orphans' | null>(null);
+  const [storageStats, setStorageStats] = useState({
+    provider: 'local' as 'supabase' | 'local' | 'hybrid',
+    bucketName: 'cusdec-documents',
+    totalFiles: 0,
+    totalBytes: 0,
+    totalFormatted: '0.00 B',
+    quotaFormatted: '5 GB',
+    percentUsed: 0,
+    cloudFiles: 0,
+    cloudBytes: 0,
+    cloudFormatted: '0.00 B',
+    localFiles: 0,
+    localBytes: 0,
+    localFormatted: '0.00 B'
+  });
   const [lanUrl, setLanUrl] = useState('http://localhost:5000');
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -181,6 +200,7 @@ export default function LrsysPortal() {
     fetchRecords();
     fetchSettings();
     fetchSystemInfo();
+    fetchStorageStats();
 
     // Start queue telemetry polling
     const interval = setInterval(async () => {
@@ -233,6 +253,7 @@ export default function LrsysPortal() {
         }
         setIsMobileModalOpen(false);
         setIsSettingsModalOpen(false);
+        setIsStorageModalOpen(false);
         return;
       }
 
@@ -298,6 +319,38 @@ export default function LrsysPortal() {
         setLanUrl(data.primaryLanUrl || `http://localhost:${data.port}`);
       }
     } catch (err) {}
+  };
+
+  const fetchStorageStats = async () => {
+    try {
+      const res = await fetch('/api/storage/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setStorageStats(data);
+      }
+    } catch (err) {}
+  };
+
+  const handlePurgeStorage = async (action: 'all' | 'orphans') => {
+    try {
+      setIsPurgingStorage(true);
+      const res = await fetch('/api/storage/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to purge storage');
+      showToast(data.message, 'success');
+      if (data.stats) setStorageStats(data.stats);
+      setConfirmPurgeAction(null);
+      setIsStorageModalOpen(false);
+      fetchRecords(false);
+    } catch (err: any) {
+      showToast('Storage purge failed', 'error', err.message);
+    } finally {
+      setIsPurgingStorage(false);
+    }
   };
 
   // -------------------------------------------------------------
@@ -957,7 +1010,7 @@ export default function LrsysPortal() {
             </Card>
 
             {/* Telemetry Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
               <Card className="shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -1013,6 +1066,54 @@ export default function LrsysPortal() {
                     {stats.accuracyRate}%
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Multi-pass OCR confidence</p>
+                </CardContent>
+              </Card>
+
+              {/* iOS-Style Interactive Storage Bucket Card */}
+              <Card 
+                onClick={() => setIsStorageModalOpen(true)}
+                className="shadow-sm border-sky-500/25 bg-gradient-to-br from-sky-500/[0.05] via-blue-500/[0.02] to-transparent cursor-pointer hover:border-sky-500/60 hover:shadow-lg hover:scale-[1.01] active:scale-[0.98] transition-all duration-200 select-none group relative overflow-hidden"
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                    Storage Bucket
+                    <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+                  </CardTitle>
+                  <HardDrive className="w-4 h-4 text-sky-500 group-hover:rotate-12 transition-transform duration-300" />
+                </CardHeader>
+                <CardContent className="flex items-center justify-between">
+                  <div>
+                    <div className="text-3xl font-bold tracking-tight text-sky-600 dark:text-sky-400">
+                      {storageStats.totalFormatted}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {storageStats.totalFiles} files · {storageStats.percentUsed}% of 5GB
+                    </p>
+                  </div>
+                  {/* Circular Activity Ring */}
+                  <div className="relative w-12 h-12 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                      <path
+                        className="text-sky-500/20"
+                        strokeWidth="3.5"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                      <path
+                        className="text-sky-500 transition-all duration-1000 ease-out"
+                        strokeDasharray={`${Math.max(4, storageStats.percentUsed)}, 100`}
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                    </svg>
+                    <span className="absolute text-[10px] font-semibold text-sky-600 dark:text-sky-300">
+                      {Math.round(storageStats.percentUsed)}%
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -1813,6 +1914,201 @@ export default function LrsysPortal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ========================================================
+           iOS-STYLE STORAGE MANAGEMENT ACTION SHEET MODAL
+           ======================================================== */}
+      {isStorageModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => {
+            if (!isPurgingStorage) {
+              setConfirmPurgeAction(null);
+              setIsStorageModalOpen(false);
+            }
+          }}
+        >
+          <div 
+            className="w-full max-w-md bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* iOS Pull Indicator Pill */}
+            <div className="pt-3 pb-1 flex justify-center">
+              <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+            </div>
+
+            <div className="p-6 pt-2 text-center">
+              {/* Circular Storage Visualizer */}
+              <div className="relative w-28 h-28 mx-auto my-3 flex items-center justify-center">
+                <svg className="w-28 h-28 transform -rotate-90" viewBox="0 0 36 36">
+                  <path
+                    className="text-sky-500/15"
+                    strokeWidth="3"
+                    stroke="currentColor"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    className="text-sky-500 transition-all duration-1000 ease-out"
+                    strokeDasharray={`${Math.max(5, storageStats.percentUsed)}, 100`}
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center">
+                  <HardDrive className="w-5 h-5 text-sky-500 mb-0.5" />
+                  <span className="text-base font-bold text-foreground">
+                    {storageStats.percentUsed}%
+                  </span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                    Capacity
+                  </span>
+                </div>
+              </div>
+
+              <h3 className="text-lg font-bold text-foreground tracking-tight">
+                {storageStats.totalFormatted} of {storageStats.quotaFormatted} Used
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {storageStats.totalFiles} documents stored in {storageStats.provider === 'supabase' ? 'Supabase Bucket' : storageStats.provider === 'hybrid' ? 'Supabase + Local Cache' : 'Local Storage'}
+              </p>
+
+              {/* Breakdown Pills */}
+              <div className="grid grid-cols-2 gap-2 mt-4 text-left">
+                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                  <div className="text-[11px] text-muted-foreground font-medium">Cloud Storage</div>
+                  <div className="text-sm font-semibold text-foreground mt-0.5">
+                    {storageStats.cloudFormatted}
+                  </div>
+                  <div className="text-[10px] text-sky-500">{storageStats.cloudFiles} remote files</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                  <div className="text-[11px] text-muted-foreground font-medium">Local Cache</div>
+                  <div className="text-sm font-semibold text-foreground mt-0.5">
+                    {storageStats.localFormatted}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{storageStats.localFiles} cached files</div>
+                </div>
+              </div>
+
+              {/* iOS Action Menu List */}
+              <div className="mt-5 space-y-2 text-left">
+                {confirmPurgeAction ? (
+                  <div className="p-4 rounded-2xl bg-destructive/10 border border-destructive/30 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-sm font-semibold text-destructive">
+                          {confirmPurgeAction === 'all' ? 'Purge Entire Storage Bucket?' : 'Clean Unlinked Orphan Images?'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          {confirmPurgeAction === 'all'
+                            ? 'This permanently deletes all declaration images from your Supabase bucket and local uploads. Declaration ledger metadata will remain.'
+                            : 'This permanently deletes images that do not match any active record in the cargo ledger.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="flex-1 rounded-xl text-xs font-semibold"
+                        disabled={isPurgingStorage}
+                        onClick={() => handlePurgeStorage(confirmPurgeAction)}
+                      >
+                        {isPurgingStorage ? 'Deleting...' : 'Yes, Delete Files'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl text-xs"
+                        disabled={isPurgingStorage}
+                        onClick={() => setConfirmPurgeAction(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmPurgeAction('orphans')}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-muted/30 hover:bg-muted/60 active:scale-[0.98] transition-all border border-border/40 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">Clean Orphan Images</div>
+                          <div className="text-[11px] text-muted-foreground">Free space by deleting unlinked scans</div>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setConfirmPurgeAction('all')}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-destructive/[0.04] hover:bg-destructive/10 active:scale-[0.98] transition-all border border-destructive/20 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive group-hover:scale-110 transition-transform">
+                          <Trash2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-destructive">Purge All Storage Bucket Files</div>
+                          <div className="text-[11px] text-muted-foreground">Wipe all images from Supabase & disk</div>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-destructive group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetchStorageStats();
+                        showToast('Storage refreshed', 'info');
+                      }}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-muted/30 hover:bg-muted/60 active:scale-[0.98] transition-all border border-border/40 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-500 group-hover:scale-110 transition-transform">
+                          <RefreshCw className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">Refresh Telemetry</div>
+                          <div className="text-[11px] text-muted-foreground">Recalculate bucket bytes and quota</div>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* iOS Dismiss Button */}
+              <div className="mt-4 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full py-2.5 rounded-2xl font-semibold border-border/60 hover:bg-muted active:scale-[0.98] transition-all"
+                  onClick={() => {
+                    setConfirmPurgeAction(null);
+                    setIsStorageModalOpen(false);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

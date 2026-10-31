@@ -4,11 +4,37 @@ import { getSupabase, isSupabaseConfigured } from './supabase';
 
 const BUCKET_NAME = 'cusdec-documents';
 const LOCAL_UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const DEFAULT_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB default (Supabase free tier quota)
 
 export interface StoredFile {
   publicUrl: string;
   storagePath: string;
   isCloud: boolean;
+}
+
+export interface StorageStats {
+  provider: 'supabase' | 'local' | 'hybrid';
+  bucketName: string;
+  totalFiles: number;
+  totalBytes: number;
+  totalFormatted: string;
+  quotaBytes: number;
+  quotaFormatted: string;
+  percentUsed: number;
+  cloudFiles: number;
+  cloudBytes: number;
+  cloudFormatted: string;
+  localFiles: number;
+  localBytes: number;
+  localFormatted: string;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0.00 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 /**
@@ -93,4 +119,152 @@ export async function deleteDocumentFile(storagePath: string): Promise<boolean> 
   }
 
   return false;
+}
+
+/**
+ * Get comprehensive telemetry on storage bucket & local uploads usage
+ */
+export async function getStorageStats(): Promise<StorageStats> {
+  const isCloud = isSupabaseConfigured();
+  const supabase = getSupabase();
+
+  let cloudBytes = 0;
+  let cloudFiles = 0;
+  let localBytes = 0;
+  let localFiles = 0;
+
+  // 1. Inspect Supabase Cloud Storage
+  if (supabase && isCloud) {
+    try {
+      const { data: cloudList, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .list('declarations', { limit: 1000 });
+
+      if (!error && cloudList) {
+        cloudFiles = cloudList.length;
+        for (const item of cloudList) {
+          cloudBytes += item.metadata?.size || 0;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Storage Stats] Error querying Supabase storage:', err.message);
+    }
+  }
+
+  // 2. Inspect Local uploads directory
+  if (fs.existsSync(LOCAL_UPLOADS_DIR)) {
+    try {
+      const files = fs.readdirSync(LOCAL_UPLOADS_DIR);
+      localFiles = files.length;
+      for (const file of files) {
+        try {
+          const stat = fs.statSync(path.join(LOCAL_UPLOADS_DIR, file));
+          localBytes += stat.size;
+        } catch (e) {}
+      }
+    } catch (err: any) {
+      console.warn('[Storage Stats] Error querying local uploads:', err.message);
+    }
+  }
+
+  const totalFiles = cloudFiles + localFiles;
+  const totalBytes = cloudBytes + localBytes;
+  const quotaBytes = DEFAULT_QUOTA_BYTES;
+  const percentUsed = parseFloat(((totalBytes / quotaBytes) * 100).toFixed(2));
+
+  let provider: 'supabase' | 'local' | 'hybrid' = 'local';
+  if (isCloud && localFiles > 0) provider = 'hybrid';
+  else if (isCloud) provider = 'supabase';
+
+  return {
+    provider,
+    bucketName: BUCKET_NAME,
+    totalFiles,
+    totalBytes,
+    totalFormatted: formatBytes(totalBytes),
+    quotaBytes,
+    quotaFormatted: formatBytes(quotaBytes),
+    percentUsed,
+    cloudFiles,
+    cloudBytes,
+    cloudFormatted: formatBytes(cloudBytes),
+    localFiles,
+    localBytes,
+    localFormatted: formatBytes(localBytes)
+  };
+}
+
+/**
+ * Purge files from Supabase Storage and/or local uploads
+ */
+export async function purgeStorageFiles(
+  action: 'all' | 'orphans',
+  activeFilenames: string[] = []
+): Promise<{ deletedCount: number; freedBytes: number; message: string }> {
+  const isCloud = isSupabaseConfigured();
+  const supabase = getSupabase();
+  const activeSet = new Set(activeFilenames.map(f => path.basename(f).toLowerCase()));
+
+  let deletedCount = 0;
+  let freedBytes = 0;
+
+  // 1. Purge Cloud Storage
+  if (supabase && isCloud) {
+    try {
+      const { data: cloudList } = await supabase.storage
+        .from(BUCKET_NAME)
+        .list('declarations', { limit: 1000 });
+
+      if (cloudList && cloudList.length > 0) {
+        const toDelete: string[] = [];
+        for (const item of cloudList) {
+          const itemName = item.name.toLowerCase();
+          const isReferenced = activeFilenames.some(f => f.toLowerCase().includes(itemName) || itemName.includes(f.toLowerCase()));
+
+          if (action === 'all' || !isReferenced) {
+            toDelete.push(`declarations/${item.name}`);
+            freedBytes += item.metadata?.size || 0;
+          }
+        }
+
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.storage.from(BUCKET_NAME).remove(toDelete);
+          if (!delErr) {
+            deletedCount += toDelete.length;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Storage Purge] Cloud storage deletion error:', err.message);
+    }
+  }
+
+  // 2. Purge Local uploads
+  if (fs.existsSync(LOCAL_UPLOADS_DIR)) {
+    try {
+      const files = fs.readdirSync(LOCAL_UPLOADS_DIR);
+      for (const file of files) {
+        const fileNameLower = file.toLowerCase();
+        const isReferenced = activeFilenames.some(f => f.toLowerCase().includes(fileNameLower) || fileNameLower.includes(f.toLowerCase()));
+
+        if (action === 'all' || !isReferenced) {
+          const fullPath = path.join(LOCAL_UPLOADS_DIR, file);
+          try {
+            const size = fs.statSync(fullPath).size;
+            fs.unlinkSync(fullPath);
+            deletedCount++;
+            freedBytes += size;
+          } catch (e) {}
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Storage Purge] Local uploads deletion error:', err.message);
+    }
+  }
+
+  return {
+    deletedCount,
+    freedBytes,
+    message: `Successfully deleted ${deletedCount} file(s) and freed ${formatBytes(freedBytes)}.`
+  };
 }
