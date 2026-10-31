@@ -112,7 +112,7 @@ export default function LrsysPortal() {
     corrected: 0,
     accuracyRate: 100
   });
-  const [filter, setFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'CORRECTED'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'CORRECTED' | 'DUPLICATES'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
@@ -414,10 +414,38 @@ export default function LrsysPortal() {
     }
   }, [selectedRecord]);
 
+  // Dynamically compute all duplicate document IDs across the ledger
+  const duplicateIdSet = React.useMemo(() => {
+    const seen = new Set<string>();
+    const dupes = new Set<string>();
+    for (const r of records) {
+      const stampRef = (r.customsRefNumber && r.greenStampNumber && r.customsRefNumber !== 'UNKNOWN' && r.greenStampNumber !== '000000')
+        ? `${r.customsRefNumber.trim()}_${r.greenStampNumber.trim()}`
+        : null;
+      const hash = r.fileHash ? r.fileHash.trim() : null;
+      const name = r.originalName ? r.originalName.trim().toLowerCase() : null;
+
+      let isDup = r.isDuplicate || false;
+      if (stampRef && seen.has(`sr:${stampRef}`)) isDup = true;
+      else if (hash && seen.has(`h:${hash}`)) isDup = true;
+      else if (name && name.length > 3 && seen.has(`n:${name}`)) isDup = true;
+
+      if (isDup) {
+        dupes.add(r.id);
+      } else {
+        if (stampRef) seen.add(`sr:${stampRef}`);
+        if (hash) seen.add(`h:${hash}`);
+        if (name && name.length > 3) seen.add(`n:${name}`);
+      }
+    }
+    return dupes;
+  }, [records]);
+
   const filteredRecords = records.filter(r => {
     if (filter === 'NEEDS_REVIEW') return r.status === 'NEEDS_REVIEW';
     if (filter === 'VERIFIED') return r.status === 'VERIFIED';
     if (filter === 'CORRECTED') return r.status === 'CORRECTED';
+    if (filter === 'DUPLICATES') return duplicateIdSet.has(r.id) || r.isDuplicate;
     return true;
   });
 
@@ -527,6 +555,21 @@ export default function LrsysPortal() {
     }
   };
 
+  const handleRemoveDuplicates = async () => {
+    if (!confirm(`Are you sure you want to clean up and remove all duplicate declarations (${duplicateIdSet.size} items)? Only the original copy of each document will be kept.`)) return;
+    try {
+      showToast('Cleaning up and removing duplicate declarations...', 'info');
+      const res = await fetch('/api/records/deduplicate', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Deduplication failed');
+      showToast(data.message || `Removed ${data.mergedCount} duplicate declaration(s)!`, 'success');
+      await fetchRecords(false);
+      await fetchStorageStats();
+    } catch (err: any) {
+      showToast('Deduplication failed', 'error', err.message);
+    }
+  };
+
   const reprocessAllWithAI = async () => {
     if (!confirm('This will wipe current records and re-extract all uploaded images using Google Gemini Vision AI. Proceed?')) return;
     try {
@@ -624,13 +667,9 @@ export default function LrsysPortal() {
           }
 
           if (data.record) {
-            // Instantly append / update newly extracted record in ledger state
+            // Instantly append every uploaded document as its own ledger entry
             setRecords(prev => {
-              const idx = prev.findIndex(r => r.id === data.record.id || (
-                r.greenStampNumber === data.record.greenStampNumber &&
-                r.customsRefNumber === data.record.customsRefNumber &&
-                r.greenStampNumber !== '000000' && r.customsRefNumber !== 'UNKNOWN'
-              ));
+              const idx = prev.findIndex(r => r.id === data.record.id);
               if (idx >= 0) {
                 const next = [...prev];
                 next[idx] = data.record;
@@ -1264,6 +1303,18 @@ export default function LrsysPortal() {
                     </Button>
                   )}
 
+                  {duplicateIdSet.size > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveDuplicates}
+                      className="gap-1.5 border-amber-500/40 text-amber-500 dark:text-amber-400 hover:bg-amber-500/10 active:scale-95 transition-all shadow-sm"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span>Remove Duplicates ({duplicateIdSet.size})</span>
+                    </Button>
+                  )}
+
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1422,6 +1473,15 @@ export default function LrsysPortal() {
                           {records.filter(r => r.status === 'CORRECTED').length}
                         </Badge>
                       </TabsTrigger>
+                      <TabsTrigger value="DUPLICATES" className="gap-1.5 text-xs">
+                        <Copy className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Duplicates</span>
+                        {duplicateIdSet.size > 0 && (
+                          <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
+                            {duplicateIdSet.size}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
                     </TabsList>
                   </Tabs>
 
@@ -1518,21 +1578,29 @@ export default function LrsysPortal() {
                             </TableCell>
 
                             <TableCell className="text-center">
-                              {r.status === 'VERIFIED' && (
-                                <Badge variant="success" className="text-[11px] font-medium">
-                                  Verified
-                                </Badge>
-                              )}
-                              {r.status === 'NEEDS_REVIEW' && (
-                                <Badge variant="warning" className="text-[11px] font-medium">
-                                  Review
-                                </Badge>
-                              )}
-                              {r.status === 'CORRECTED' && (
-                                <Badge variant="info" className="text-[11px] font-medium">
-                                  Corrected
-                                </Badge>
-                              )}
+                              <div className="flex flex-wrap items-center justify-center gap-1">
+                                {r.status === 'VERIFIED' && (
+                                  <Badge variant="success" className="text-[11px] font-medium">
+                                    Verified
+                                  </Badge>
+                                )}
+                                {r.status === 'NEEDS_REVIEW' && (
+                                  <Badge variant="warning" className="text-[11px] font-medium">
+                                    Review
+                                  </Badge>
+                                )}
+                                {r.status === 'CORRECTED' && (
+                                  <Badge variant="info" className="text-[11px] font-medium">
+                                    Corrected
+                                  </Badge>
+                                )}
+                                {(duplicateIdSet.has(r.id) || r.isDuplicate) && (
+                                  <Badge variant="outline" className="text-[10px] font-medium bg-amber-500/15 text-amber-500 dark:text-amber-400 border-amber-500/30 gap-1 px-1.5 py-0">
+                                    <Copy className="w-2.5 h-2.5" />
+                                    <span>Duplicate</span>
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
 
                             <TableCell className="text-center font-mono text-xs">

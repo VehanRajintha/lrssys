@@ -35,6 +35,7 @@ export interface CusDecRecord {
   mergeCount?: number;
   macroZoomApplied?: boolean;
   matchedMasterName?: string | null;
+  isDuplicate?: boolean;
 }
 
 export interface Settings {

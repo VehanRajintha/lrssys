@@ -95,6 +95,8 @@ function recordToRow(r: CusDecRecord) {
 }
 
 function rowToRecord(row: any): CusDecRecord {
+  const issues = Array.isArray(row.issues) ? row.issues : [];
+  const isDuplicate = issues.some((i: any) => String(i).toLowerCase().includes('duplicate')) || Boolean(row.is_duplicate);
   return {
     id: row.id,
     filename: row.filename,
@@ -114,11 +116,12 @@ function rowToRecord(row: any): CusDecRecord {
     goodsDescription: row.goods_description || '',
     confidence: Number(row.confidence || 0),
     status: row.status || 'NEEDS_REVIEW',
-    issues: Array.isArray(row.issues) ? row.issues : [],
+    issues,
     boundingBoxes: row.bounding_boxes || null,
     manualCorrection: Boolean(row.manual_correction),
     macroZoomApplied: Boolean(row.macro_zoom_applied),
     matchedMasterName: row.matched_master_name || null,
+    isDuplicate,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     mergeCount: row.merge_count || 1
@@ -259,39 +262,36 @@ function findDuplicateIndex(record: Partial<CusDecRecord>): number {
 }
 
 export async function saveRecord(record: CusDecRecord): Promise<CusDecRecord> {
-  const existingIdx = findDuplicateIndex(record);
+  // Only update in-place if an identical record ID already exists in cache
+  const existingById = record.id ? recordsCache.findIndex(r => r.id === record.id) : -1;
   let saved: CusDecRecord;
 
-  if (existingIdx >= 0) {
-    const existing = recordsCache[existingIdx];
-    const isManuallyCorrected = existing.status === 'CORRECTED' || existing.manualCorrection;
-
+  if (existingById >= 0) {
+    const existing = recordsCache[existingById];
     saved = {
       ...existing,
-      greenStampNumber: isManuallyCorrected ? existing.greenStampNumber : (record.greenStampNumber || existing.greenStampNumber),
-      customsRefNumber: isManuallyCorrected ? existing.customsRefNumber : (record.customsRefNumber || existing.customsRefNumber),
-      customsDate: isManuallyCorrected ? existing.customsDate : (record.customsDate || existing.customsDate),
-      consigneeName: isManuallyCorrected ? existing.consigneeName : (record.consigneeName || existing.consigneeName),
-      declarantName: isManuallyCorrected ? existing.declarantName : (record.declarantName || existing.declarantName),
-      status: isManuallyCorrected ? 'CORRECTED' : (existing.status === 'VERIFIED' ? 'VERIFIED' : record.status),
-      confidence: Math.max(existing.confidence || 0, record.confidence || 0),
-      imageUrl: record.imageUrl || existing.imageUrl,
-      filename: record.filename || existing.filename,
-      imagePath: record.imagePath || existing.imagePath,
-      fileHash: record.fileHash || existing.fileHash,
-      originalName: record.originalName || existing.originalName,
-      boundingBoxes: record.boundingBoxes || existing.boundingBoxes,
-      updatedAt: new Date().toISOString(),
-      mergeCount: (existing.mergeCount || 1) + 1
+      ...record,
+      updatedAt: new Date().toISOString()
     };
-    recordsCache[existingIdx] = saved;
+    recordsCache[existingById] = saved;
   } else {
+    // New uploaded document! Check if it is a duplicate of an existing declaration
+    const isDup = findDuplicateIndex(record) >= 0;
+    const issues = Array.isArray(record.issues) ? [...record.issues] : [];
+    if (isDup && !issues.some(i => i.toLowerCase().includes('duplicate'))) {
+      issues.push('Duplicate declaration entry');
+    }
+
     saved = {
       ...record,
-      createdAt: new Date().toISOString(),
+      id: record.id || ('REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)),
+      isDuplicate: isDup,
+      issues,
+      createdAt: record.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       mergeCount: 1
     };
+    // Prepend new record so EVERY uploaded file gets its own row in the ledger!
     recordsCache.unshift(saved);
   }
 
@@ -395,39 +395,47 @@ export async function clearAllRecords(): Promise<boolean> {
   return true;
 }
 
-export function deduplicateExistingRecords(): number {
+export async function deduplicateExistingRecords(): Promise<number> {
   const seen = new Map<string, CusDecRecord>();
-  let removedCount = 0;
+  const duplicateIdsToRemove: string[] = [];
 
   for (const r of recordsCache) {
-    const cleanName = (r.originalName || getCleanOriginalName(r.filename)).toLowerCase();
-    const key = cleanName || (r.customsRefNumber && r.greenStampNumber && r.customsRefNumber !== 'UNKNOWN' ? `${r.customsRefNumber}_${r.greenStampNumber}` : r.id);
+    const stampRefKey = (r.customsRefNumber && r.greenStampNumber && r.customsRefNumber !== 'UNKNOWN' && r.greenStampNumber !== '000000')
+      ? `${r.customsRefNumber.trim()}_${r.greenStampNumber.trim()}`
+      : null;
+    const nameKey = r.originalName ? r.originalName.trim().toLowerCase() : null;
+    const hashKey = r.fileHash ? r.fileHash.trim() : null;
+
+    const key = stampRefKey || hashKey || nameKey || r.id;
 
     if (seen.has(key)) {
-      const existing = seen.get(key)!;
-      if (r.status === 'CORRECTED' || r.manualCorrection) {
-        seen.set(key, { ...r, mergeCount: (existing.mergeCount || 1) + 1 });
-      } else {
-        existing.mergeCount = (existing.mergeCount || 1) + 1;
-      }
-      removedCount++;
+      duplicateIdsToRemove.push(r.id);
     } else {
-      seen.set(key, r);
+      seen.set(key, {
+        ...r,
+        isDuplicate: false,
+        issues: Array.isArray(r.issues) ? r.issues.filter(i => !i.toLowerCase().includes('duplicate')) : []
+      });
     }
   }
 
-  if (removedCount > 0) {
-    recordsCache = Array.from(seen.values());
+  if (duplicateIdsToRemove.length > 0) {
+    const idSet = new Set(duplicateIdsToRemove);
+    recordsCache = recordsCache.filter(r => !idSet.has(r.id));
     flushRecordsSync();
 
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        safeSupabaseExec(() => supabase.from('cusdec_records').upsert(recordsCache.map(recordToRow)), 'deduplicate');
+        try {
+          await supabase.from('cusdec_records').delete().in('id', duplicateIdsToRemove);
+        } catch (err: any) {
+          console.error('[Supabase Deduplicate Delete Error]:', err.message);
+        }
       }
     }
   }
-  return removedCount;
+  return duplicateIdsToRemove.length;
 }
 
 export function getSettings(): Settings {
