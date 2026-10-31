@@ -27,6 +27,10 @@ export interface StorageStats {
   localFiles: number;
   localBytes: number;
   localFormatted: string;
+  diskFreeBytes?: number;
+  diskFreeFormatted?: string;
+  diskTotalBytes?: number;
+  diskTotalFormatted?: string;
 }
 
 export function formatBytes(bytes: number): string {
@@ -241,16 +245,32 @@ export async function getStorageStats(forceRefresh = false): Promise<StorageStat
 
   const totalFiles = cloudFiles + localFiles;
   const totalBytes = cloudBytes + localBytes;
-  const quotaBytes = DEFAULT_QUOTA_BYTES;
+
+  let diskTotalBytes = 0;
+  let diskFreeBytes = 0;
+  try {
+    if (typeof (fs as any).statfsSync === 'function') {
+      const statfs = (fs as any).statfsSync(process.cwd());
+      diskTotalBytes = Number(statfs.blocks) * Number(statfs.bsize);
+      diskFreeBytes = Number(statfs.bavail) * Number(statfs.bsize);
+    }
+  } catch (e) {
+    // Statfs fallback
+  }
+
+  const isLocalMode = localOnly || !isCloud;
+  const quotaBytes = (isLocalMode && diskTotalBytes > 0) ? diskTotalBytes : DEFAULT_QUOTA_BYTES;
   const percentUsed = parseFloat(((totalBytes / quotaBytes) * 100).toFixed(2));
 
   let provider: 'supabase' | 'local' | 'hybrid' = 'local';
-  if (isCloud && localFiles > 0) provider = 'hybrid';
-  else if (isCloud) provider = 'supabase';
+  if (isCloud && !localOnly && localFiles > 0) provider = 'hybrid';
+  else if (isCloud && !localOnly) provider = 'supabase';
+
+  const bucketName = isLocalMode ? 'VPS NVMe SSD Storage' : BUCKET_NAME;
 
   const stats: StorageStats = {
     provider,
-    bucketName: BUCKET_NAME,
+    bucketName,
     totalFiles,
     totalBytes,
     totalFormatted: formatBytes(totalBytes),
@@ -262,7 +282,11 @@ export async function getStorageStats(forceRefresh = false): Promise<StorageStat
     cloudFormatted: formatBytes(cloudBytes),
     localFiles,
     localBytes,
-    localFormatted: formatBytes(localBytes)
+    localFormatted: formatBytes(localBytes),
+    diskFreeBytes,
+    diskFreeFormatted: diskFreeBytes > 0 ? formatBytes(diskFreeBytes) : undefined,
+    diskTotalBytes,
+    diskTotalFormatted: diskTotalBytes > 0 ? formatBytes(diskTotalBytes) : undefined
   };
 
   cachedStorageStats = stats;

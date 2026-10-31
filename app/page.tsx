@@ -326,14 +326,16 @@ export default function LrsysPortal() {
     totalFiles: 0,
     totalBytes: 0,
     totalFormatted: '0.00 B',
-    quotaFormatted: '5 GB',
+    quotaFormatted: '50 GB',
     percentUsed: 0,
     cloudFiles: 0,
     cloudBytes: 0,
     cloudFormatted: '0.00 B',
     localFiles: 0,
     localBytes: 0,
-    localFormatted: '0.00 B'
+    localFormatted: '0.00 B',
+    diskFreeFormatted: undefined as string | undefined,
+    diskTotalFormatted: undefined as string | undefined
   });
   const [lanUrl, setLanUrl] = useState('http://localhost:5000');
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -1864,7 +1866,7 @@ export default function LrsysPortal() {
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
-                    Storage Bucket
+                    {storageStats.provider === 'local' ? 'VPS Storage' : storageStats.provider === 'hybrid' ? 'Hybrid Storage' : 'Storage Bucket'}
                     <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
                   </CardTitle>
                   <HardDrive className="w-4 h-4 text-sky-500 group-hover:rotate-12 transition-transform duration-300" />
@@ -1885,7 +1887,7 @@ export default function LrsysPortal() {
                           {storageStats.totalFormatted}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {storageStats.totalFiles} files · {storageStats.percentUsed}% of 5GB
+                          {storageStats.totalFiles} files · {storageStats.percentUsed}% of {storageStats.quotaFormatted || '5GB'}
                         </p>
                       </div>
                       {/* Circular Activity Ring */}
@@ -3091,25 +3093,46 @@ export default function LrsysPortal() {
                     {storageStats.totalFormatted} of {storageStats.quotaFormatted} Used
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {storageStats.totalFiles} documents stored in {storageStats.provider === 'supabase' ? 'Supabase Bucket' : storageStats.provider === 'hybrid' ? 'Supabase + Local Cache' : 'Local Storage'}
+                    {storageStats.totalFiles} documents stored in {storageStats.provider === 'supabase' ? 'Supabase Bucket' : storageStats.provider === 'hybrid' ? 'Supabase + Local Cache' : 'VPS NVMe Disk'}
                   </p>
 
                   {/* Breakdown Pills */}
                   <div className="grid grid-cols-2 gap-2 mt-4 text-left">
-                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                      <div className="text-[11px] text-muted-foreground font-medium">Cloud Storage</div>
-                      <div className="text-sm font-semibold text-foreground mt-0.5">
-                        {storageStats.cloudFormatted}
-                      </div>
-                      <div className="text-[10px] text-sky-500">{storageStats.cloudFiles} remote files</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                      <div className="text-[11px] text-muted-foreground font-medium">Local Cache</div>
-                      <div className="text-sm font-semibold text-foreground mt-0.5">
-                        {storageStats.localFormatted}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground">{storageStats.localFiles} cached files</div>
-                    </div>
+                    {storageStats.provider === 'local' ? (
+                      <>
+                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                          <div className="text-[11px] text-muted-foreground font-medium">VPS Scans</div>
+                          <div className="text-sm font-semibold text-foreground mt-0.5">
+                            {storageStats.localFormatted}
+                          </div>
+                          <div className="text-[10px] text-sky-500">{storageStats.localFiles} document scans</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                          <div className="text-[11px] text-muted-foreground font-medium">Available Disk</div>
+                          <div className="text-sm font-semibold text-foreground mt-0.5">
+                            {storageStats.diskFreeFormatted || '50+ GB'}
+                          </div>
+                          <div className="text-[10px] text-emerald-500">Free VPS SSD storage</div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                          <div className="text-[11px] text-muted-foreground font-medium">Cloud Storage</div>
+                          <div className="text-sm font-semibold text-foreground mt-0.5">
+                            {storageStats.cloudFormatted}
+                          </div>
+                          <div className="text-[10px] text-sky-500">{storageStats.cloudFiles} remote files</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                          <div className="text-[11px] text-muted-foreground font-medium">Local Cache</div>
+                          <div className="text-sm font-semibold text-foreground mt-0.5">
+                            {storageStats.localFormatted}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">{storageStats.localFiles} cached files</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -3122,11 +3145,15 @@ export default function LrsysPortal() {
                       <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
                       <div>
                         <div className="text-sm font-semibold text-destructive">
-                          {confirmPurgeAction === 'all' ? 'Purge Entire Storage Bucket?' : 'Clean Unlinked Orphan Images?'}
+                          {confirmPurgeAction === 'all'
+                            ? (storageStats.provider === 'local' ? 'Purge All VPS Scans?' : 'Purge Entire Storage Bucket?')
+                            : 'Clean Unlinked Orphan Images?'}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                           {confirmPurgeAction === 'all'
-                            ? 'This permanently deletes all declaration images from your Supabase bucket and local uploads. Declaration ledger metadata will remain.'
+                            ? (storageStats.provider === 'local'
+                                ? 'This permanently deletes all declaration images from your VPS uploads folder. Declaration ledger metadata will remain.'
+                                : 'This permanently deletes all declaration images from your Supabase bucket and local uploads. Declaration ledger metadata will remain.')
                             : 'This permanently deletes images that do not match any active record in the cargo ledger.'}
                         </p>
                       </div>
@@ -3174,15 +3201,19 @@ export default function LrsysPortal() {
                     <button
                       type="button"
                       onClick={() => setConfirmPurgeAction('all')}
-                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-destructive/[0.04] hover:bg-destructive/10 active:scale-[0.98] transition-all border border-destructive/20 group"
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-destructive/[0.04] hover:bg-destructive/10 active:scale-[0.98] transition-all border border-border/40 group"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive group-hover:scale-110 transition-transform">
                           <Trash2 className="w-4 h-4" />
                         </div>
                         <div>
-                          <div className="text-sm font-semibold text-destructive">Purge All Storage Bucket Files</div>
-                          <div className="text-[11px] text-muted-foreground">Wipe all images from Supabase & disk</div>
+                          <div className="text-sm font-semibold text-destructive">
+                            {storageStats.provider === 'local' ? 'Purge All Local Image Files' : 'Purge All Storage Bucket Files'}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {storageStats.provider === 'local' ? 'Wipe all document scans from VPS disk' : 'Wipe all images from Supabase & disk'}
+                          </div>
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-destructive group-hover:translate-x-0.5 transition-transform" />
