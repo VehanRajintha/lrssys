@@ -318,6 +318,9 @@ export default function LrsysPortal() {
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
+  const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
+  const [isRefreshingSystem, setIsRefreshingSystem] = useState(false);
+  const [systemMetrics, setSystemMetrics] = useState<any>(null);
   const [isPurgingStorage, setIsPurgingStorage] = useState(false);
   const [confirmPurgeAction, setConfirmPurgeAction] = useState<'all' | 'orphans' | null>(null);
   const [storageStats, setStorageStats] = useState({
@@ -469,6 +472,7 @@ export default function LrsysPortal() {
         setIsMobileModalOpen(false);
         setIsSettingsModalOpen(false);
         setIsStorageModalOpen(false);
+        setIsSystemModalOpen(false);
         return;
       }
 
@@ -543,14 +547,19 @@ export default function LrsysPortal() {
     } catch (err) { }
   };
 
-  const fetchSystemInfo = async () => {
+  const fetchSystemInfo = async (showLoading = false) => {
+    if (showLoading) setIsRefreshingSystem(true);
     try {
       const res = await fetch('/api/system/info');
       if (res.ok) {
         const data = await res.json();
+        setSystemMetrics(data);
         setLanUrl(data.primaryLanUrl || `http://localhost:${data.port}`);
       }
     } catch (err) { }
+    finally {
+      if (showLoading) setIsRefreshingSystem(false);
+    }
   };
 
   const fetchStorageStats = async (showLoading = false) => {
@@ -1334,8 +1343,88 @@ export default function LrsysPortal() {
             </TabsList>
           </Tabs>
 
+          {/* iOS-Style System Telemetry Capsule */}
+          {systemMetrics && (
+            <div
+              onClick={() => {
+                fetchSystemInfo(true);
+                setIsSystemModalOpen(true);
+              }}
+              className="hidden xl:flex items-center gap-3 px-3.5 py-1.5 rounded-full bg-muted/40 hover:bg-muted/80 border border-border/50 hover:border-sky-500/40 transition-all duration-200 cursor-pointer backdrop-blur-md select-none group shadow-sm active:scale-95"
+              title="Click to view detailed Server Hardware Health & Specs"
+            >
+              {/* CPU Meter */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <Cpu className="w-3.5 h-3.5 text-sky-500 group-hover:scale-110 transition-transform" />
+                <span className="text-[11px] font-medium text-muted-foreground">CPU</span>
+                <span className={`font-mono text-xs font-semibold ${systemMetrics.cpu.percent > 80 ? 'text-destructive' : systemMetrics.cpu.percent > 50 ? 'text-amber-500' : 'text-sky-600 dark:text-sky-400'}`}>
+                  {systemMetrics.cpu.percent}%
+                </span>
+                {/* iOS Micro Gauge */}
+                <div className="w-8 h-1.5 rounded-full bg-sky-500/15 overflow-hidden flex">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      systemMetrics.cpu.percent > 80 ? 'bg-destructive' : systemMetrics.cpu.percent > 50 ? 'bg-amber-500' : 'bg-sky-500'
+                    }`}
+                    style={{ width: `${Math.max(10, systemMetrics.cpu.percent)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="h-3 w-px bg-border/60" />
+
+              {/* RAM Meter */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <Activity className="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                <span className="text-[11px] font-medium text-muted-foreground">RAM</span>
+                <span className={`font-mono text-xs font-semibold ${systemMetrics.ram.percent > 85 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {systemMetrics.ram.usedFormatted}
+                </span>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  ({systemMetrics.ram.percent}%)
+                </span>
+                {/* iOS Micro Gauge */}
+                <div className="w-8 h-1.5 rounded-full bg-emerald-500/15 overflow-hidden flex">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      systemMetrics.ram.percent > 85 ? 'bg-destructive' : systemMetrics.ram.percent > 65 ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.max(10, systemMetrics.ram.percent)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="h-3 w-px bg-border/60" />
+
+              {/* Uptime Meter */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <Clock className="w-3.5 h-3.5 text-purple-400 group-hover:rotate-45 transition-transform" />
+                <span className="text-[11px] font-medium text-muted-foreground">Up</span>
+                <span className="font-mono text-xs font-semibold text-foreground">
+                  {systemMetrics.system.uptimeFormatted}
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+              </div>
+            </div>
+          )}
+
           {/* Action Toolbar */}
           <div className="flex items-center gap-2">
+            {systemMetrics && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  fetchSystemInfo(true);
+                  setIsSystemModalOpen(true);
+                }}
+                className="xl:hidden gap-1.5"
+                title="Server Hardware Telemetry"
+              >
+                <Cpu className="w-4 h-4 text-sky-500" />
+                <span className="hidden sm:inline font-mono text-xs">{systemMetrics.cpu.percent}%</span>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -3252,6 +3341,147 @@ export default function LrsysPortal() {
                     setConfirmPurgeAction(null);
                     setIsStorageModalOpen(false);
                   }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+           iOS-STYLE HARDWARE & SYSTEM HEALTH TELEMETRY MODAL
+           ======================================================== */}
+      {isSystemModalOpen && systemMetrics && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 select-none"
+          onClick={() => setIsSystemModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* iOS Pull Indicator Pill */}
+            <div className="pt-3 pb-1 flex justify-center">
+              <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+            </div>
+
+            <div className="p-6 pt-2 text-center">
+              {/* Header Icon & Title */}
+              <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 mx-auto mb-2 shadow-sm">
+                <Cpu className="w-6 h-6 animate-pulse" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground tracking-tight">
+                Server & Hardware Health
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {systemMetrics.system.hostname} • {systemMetrics.system.platform === 'win32' ? 'Windows' : 'Ubuntu Linux'} ({systemMetrics.system.arch})
+              </p>
+
+              {/* Dual Activity Gauge Cards (iOS Style) */}
+              <div className="grid grid-cols-2 gap-3 mt-4 text-left">
+                {/* CPU Gauge Card */}
+                <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/50 relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400">
+                      <Cpu className="w-4 h-4 text-sky-500" />
+                      <span>CPU Load</span>
+                    </div>
+                    <span className="text-lg font-bold font-mono text-foreground">
+                      {systemMetrics.cpu.percent}%
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-muted-foreground/15 h-2 rounded-full overflow-hidden mt-2.5">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        systemMetrics.cpu.percent > 80 ? 'bg-destructive' : systemMetrics.cpu.percent > 50 ? 'bg-amber-500' : 'bg-sky-500'
+                      }`}
+                      style={{ width: `${Math.max(6, systemMetrics.cpu.percent)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-2">
+                    <span>{systemMetrics.cpu.cores} Cores</span>
+                    <span className="font-mono">Load: {systemMetrics.cpu.loadAvg.join(', ')}</span>
+                  </div>
+                </div>
+
+                {/* RAM Gauge Card */}
+                <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/50 relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      <Activity className="w-4 h-4 text-emerald-500" />
+                      <span>RAM Memory</span>
+                    </div>
+                    <span className="text-lg font-bold font-mono text-foreground">
+                      {systemMetrics.ram.percent}%
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-muted-foreground/15 h-2 rounded-full overflow-hidden mt-2.5">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        systemMetrics.ram.percent > 85 ? 'bg-destructive' : systemMetrics.ram.percent > 65 ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.max(6, systemMetrics.ram.percent)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-2">
+                    <span>Used: {systemMetrics.ram.usedFormatted}</span>
+                    <span>Total: {systemMetrics.ram.totalFormatted}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hardware & Process Specs List */}
+              <div className="mt-3.5 rounded-2xl bg-muted/20 border border-border/40 divide-y divide-border/40 text-left text-xs">
+                <div className="p-2.5 flex items-center justify-between">
+                  <span className="text-muted-foreground">Processor</span>
+                  <span className="font-medium text-foreground truncate max-w-[220px]" title={systemMetrics.cpu.model}>
+                    {systemMetrics.cpu.model}
+                  </span>
+                </div>
+                <div className="p-2.5 flex items-center justify-between">
+                  <span className="text-muted-foreground">System Uptime</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="font-mono font-medium text-foreground">{systemMetrics.system.uptimeFormatted}</span>
+                  </div>
+                </div>
+                <div className="p-2.5 flex items-center justify-between">
+                  <span className="text-muted-foreground">Node.js Process Uptime</span>
+                  <span className="font-mono font-medium text-foreground">{systemMetrics.process.uptimeFormatted}</span>
+                </div>
+                <div className="p-2.5 flex items-center justify-between">
+                  <span className="text-muted-foreground">Process RSS / Heap</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {systemMetrics.process.rss} / {systemMetrics.process.heapUsed}
+                  </span>
+                </div>
+                <div className="p-2.5 flex items-center justify-between">
+                  <span className="text-muted-foreground">Runtime Environment</span>
+                  <span className="font-mono font-medium text-foreground">{systemMetrics.system.nodeVersion} (Port {lanUrl.split(':').pop()})</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 mt-4 pt-1">
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-2xl gap-2 text-xs"
+                  disabled={isRefreshingSystem}
+                  onClick={() => fetchSystemInfo(true)}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingSystem ? 'animate-spin' : ''}`} />
+                  {isRefreshingSystem ? 'Updating...' : 'Refresh Telemetry'}
+                </Button>
+                <Button
+                  variant="default"
+                  className="rounded-2xl px-6 text-xs font-semibold"
+                  onClick={() => setIsSystemModalOpen(false)}
                 >
                   Close
                 </Button>
