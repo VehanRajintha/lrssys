@@ -38,16 +38,27 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Upload a document buffer to Supabase Storage if configured, or local uploads/ directory as fallback
+ * Check if the application is configured to force 100% local VPS disk storage
+ */
+export function isLocalStorageOnly(): boolean {
+  return process.env.STORAGE_PROVIDER === 'local' ||
+         process.env.STORAGE_MODE === 'local' ||
+         !isSupabaseConfigured();
+}
+
+/**
+ * Upload a document buffer to local uploads/ directory (default on VPS or when STORAGE_PROVIDER=local)
+ * or Supabase Storage if configured and not in local mode
  */
 export async function uploadDocumentFile(
   buffer: Buffer,
   filename: string,
   contentType: string = 'image/jpeg'
 ): Promise<StoredFile> {
+  const localOnly = isLocalStorageOnly();
   const supabase = getSupabase();
 
-  if (supabase && isSupabaseConfigured()) {
+  if (!localOnly && supabase && isSupabaseConfigured()) {
     try {
       const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
       const storagePath = `declarations/${Date.now()}_${cleanName}`;
@@ -77,7 +88,7 @@ export async function uploadDocumentFile(
     }
   }
 
-  // Local Disk Fallback
+  // Local Disk Storage (VPS native: Instant 0ms write, zero cloud quota usage)
   try {
     if (!fs.existsSync(LOCAL_UPLOADS_DIR)) {
       fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true });
@@ -166,7 +177,8 @@ export async function getStorageStats(forceRefresh = false): Promise<StorageStat
     return cachedStorageStats;
   }
 
-  const isCloud = isSupabaseConfigured();
+  const localOnly = isLocalStorageOnly();
+  const isCloud = isSupabaseConfigured() && !localOnly;
   const supabase = getSupabase();
 
   let cloudBytes = 0;
@@ -174,7 +186,7 @@ export async function getStorageStats(forceRefresh = false): Promise<StorageStat
   let localBytes = 0;
   let localFiles = 0;
 
-  // 1. Inspect Supabase Cloud Storage
+  // 1. Inspect Supabase Cloud Storage (if not in local-only storage mode)
   if (supabase && isCloud) {
     try {
       // Check declarations folder where documents are stored

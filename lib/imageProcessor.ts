@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import fs from 'fs';
+import path from 'path';
 
 /**
  * Helper to resolve buffer from local file, remote URL (Supabase Storage), or existing Buffer
@@ -16,6 +17,13 @@ export async function resolveImageBuffer(imageInput: string | Buffer): Promise<B
       }
       const arrayBuffer = await response.arrayBuffer();
       return Buffer.from(arrayBuffer);
+    }
+    if (imageInput.startsWith('/api/images/')) {
+      const filename = path.basename(decodeURIComponent(imageInput.replace('/api/images/', '')));
+      const inUploads = path.join(process.cwd(), 'uploads', filename);
+      const inSamples = path.join(process.cwd(), 'samples', filename);
+      if (fs.existsSync(inUploads)) return fs.readFileSync(inUploads);
+      if (fs.existsSync(inSamples)) return fs.readFileSync(inSamples);
     }
     return fs.readFileSync(imageInput);
   }
