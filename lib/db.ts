@@ -367,7 +367,10 @@ export async function deleteRecords(ids: string[]): Promise<number> {
       const supabase = getSupabase();
       if (supabase) {
         try {
-          await supabase.from('cusdec_records').delete().in('id', ids);
+          for (let i = 0; i < ids.length; i += 50) {
+            const chunk = ids.slice(i, i + 50);
+            await supabase.from('cusdec_records').delete().in('id', chunk);
+          }
         } catch (err: any) {
           console.error('[Supabase Bulk Delete Error]:', err.message);
         }
@@ -385,7 +388,7 @@ export async function clearAllRecords(): Promise<boolean> {
     const supabase = getSupabase();
     if (supabase) {
       try {
-        await supabase.from('cusdec_records').delete().not('id', 'is', null);
+        await supabase.from('cusdec_records').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       } catch (err: any) {
         console.error('[Supabase Clear All Error]:', err.message);
       }
@@ -428,7 +431,10 @@ export async function deduplicateExistingRecords(): Promise<number> {
       const supabase = getSupabase();
       if (supabase) {
         try {
-          await supabase.from('cusdec_records').delete().in('id', duplicateIdsToRemove);
+          for (let i = 0; i < duplicateIdsToRemove.length; i += 50) {
+            const chunk = duplicateIdsToRemove.slice(i, i + 50);
+            await supabase.from('cusdec_records').delete().in('id', chunk);
+          }
         } catch (err: any) {
           console.error('[Supabase Deduplicate Delete Error]:', err.message);
         }

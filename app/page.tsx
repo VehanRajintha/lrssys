@@ -125,13 +125,6 @@ export default function LrsysPortal() {
   // Data State
   const [records, setRecords] = useState<CusDecRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<CusDecRecord | null>(null);
-  const [stats, setStats] = useState<Stats>({
-    total: 0,
-    verified: 0,
-    needsReview: 0,
-    corrected: 0,
-    accuracyRate: 100
-  });
   const [filter, setFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'CORRECTED' | 'DUPLICATES'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
@@ -174,6 +167,26 @@ export default function LrsysPortal() {
     }
     return dupIds;
   }, [records]);
+
+  // Derived live ledger metrics (guaranteed 100% in sync with actual table records)
+  const ledgerStats = useMemo(() => {
+    const total = records.length;
+    const verified = records.filter(r => r.status === 'VERIFIED').length;
+    const needsReview = records.filter(r => r.status === 'NEEDS_REVIEW').length;
+    const corrected = records.filter(r => r.status === 'CORRECTED').length;
+    const duplicates = duplicateIdSet.size;
+    const totalValid = verified + corrected;
+    const accuracyRate = total > 0 ? (((totalValid) / total) * 100).toFixed(1) : '100.0';
+
+    return {
+      total,
+      verified,
+      needsReview,
+      corrected,
+      duplicates,
+      accuracyRate: parseFloat(accuracyRate)
+    };
+  }, [records, duplicateIdSet]);
 
   // Remove all duplicate records from database & cache
   const handleRemoveDuplicates = async () => {
@@ -316,7 +329,6 @@ export default function LrsysPortal() {
           const data = await res.json();
           if (data.queue && data.queue.isProcessing) {
             setQueueStatus(data.queue);
-            if (data.stats) setStats(data.stats);
             fetchRecords(false);
           }
         }
@@ -441,14 +453,6 @@ export default function LrsysPortal() {
               return prev;
             }
             return data.records || [];
-          });
-        }
-        if (data.stats) {
-          setStats(prev => {
-            if (isClientProcessingRef.current && prev.total > (data.stats?.total || 0)) {
-              return prev;
-            }
-            return data.stats;
           });
         }
 
@@ -647,7 +651,6 @@ export default function LrsysPortal() {
         setSelectedRecord(null);
         setSelectedRowIds(new Set());
         setRecords([]);
-        setStats({ total: 0, verified: 0, needsReview: 0, corrected: 0, accuracyRate: 0 });
         await fetchRecords();
         await fetchStorageStats();
         showToast('System ledger cleared', 'info');
@@ -820,11 +823,6 @@ export default function LrsysPortal() {
               }
               return [data.record, ...prev];
             });
-
-            // Update stats in real-time
-            if (data.stats) {
-              setStats(data.stats);
-            }
           }
 
           // Real-time smooth storage capacity update
@@ -1713,7 +1711,7 @@ export default function LrsysPortal() {
                   <FileText className="w-4 h-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tracking-tight">{stats.total}</div>
+                  <div className="text-3xl font-bold tracking-tight">{ledgerStats.total}</div>
                   <p className="text-xs text-muted-foreground mt-1">Ingested in port ledger</p>
                 </CardContent>
               </Card>
@@ -1727,7 +1725,7 @@ export default function LrsysPortal() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-                    {stats.verified + stats.corrected}
+                    {ledgerStats.verified + ledgerStats.corrected}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Ready for port clearance</p>
                 </CardContent>
@@ -1742,7 +1740,7 @@ export default function LrsysPortal() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
-                    {stats.needsReview}
+                    {ledgerStats.needsReview}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Flagged for manual inspection</p>
                 </CardContent>
@@ -1757,7 +1755,7 @@ export default function LrsysPortal() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold tracking-tight text-primary">
-                    {stats.accuracyRate}%
+                    {ledgerStats.accuracyRate}%
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Multi-pass OCR confidence</p>
                 </CardContent>
