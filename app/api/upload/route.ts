@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import queue from '@/lib/queue';
 import * as db from '@/lib/db';
 import * as extractor from '@/lib/extractor';
-import { uploadDocumentFile } from '@/lib/storage';
+import { uploadDocumentFile, getStorageStats } from '@/lib/storage';
 import { CusDecRecord } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -81,12 +81,15 @@ export async function POST(request: NextRequest) {
         processedRecords.push(saved);
       }
 
+      const storageStats = await getStorageStats();
+
       return NextResponse.json({
         success: true,
         message: `Successfully processed ${processedRecords.length} document(s)`,
         records: processedRecords,
         record: processedRecords[0] || null,
-        stats: db.getStats()
+        stats: db.getStats(),
+        storageStats
       }, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate'

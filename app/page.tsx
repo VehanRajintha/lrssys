@@ -213,6 +213,9 @@ export default function LrsysPortal() {
 
     // Start queue telemetry polling (only monitors if client is not actively processing)
     const interval = setInterval(async () => {
+      // Periodically refresh storage stats smoothly
+      fetchStorageStats();
+
       if (isClientProcessingRef.current) return;
 
       try {
@@ -226,7 +229,7 @@ export default function LrsysPortal() {
           }
         }
       } catch (err) {}
-    }, 2000);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, []);
@@ -640,6 +643,35 @@ export default function LrsysPortal() {
             if (data.stats) {
               setStats(data.stats);
             }
+          }
+
+          // Real-time smooth storage capacity update
+          if (data.storageStats) {
+            setStorageStats(data.storageStats);
+          } else {
+            setStorageStats(prev => {
+              const addedBytes = currentFile.size || 250000;
+              const nextTotalBytes = prev.totalBytes + addedBytes;
+              const nextTotalFiles = prev.totalFiles + 1;
+              const quotaBytes = 5 * 1024 * 1024 * 1024;
+              const percentUsed = parseFloat(((nextTotalBytes / quotaBytes) * 100).toFixed(2));
+              const formatK = (b: number) => {
+                if (!b) return '0.00 B';
+                const s = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(b) / Math.log(1024));
+                return (b / Math.pow(1024, i)).toFixed(2) + ' ' + s[i];
+              };
+              return {
+                ...prev,
+                totalBytes: nextTotalBytes,
+                totalFiles: nextTotalFiles,
+                totalFormatted: formatK(nextTotalBytes),
+                percentUsed,
+                cloudFiles: prev.cloudFiles + 1,
+                cloudBytes: prev.cloudBytes + addedBytes,
+                cloudFormatted: formatK(prev.cloudBytes + addedBytes)
+              };
+            });
           }
           completedCount++;
         } catch (err: any) {

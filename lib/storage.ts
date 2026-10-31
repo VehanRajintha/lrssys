@@ -136,14 +136,33 @@ export async function getStorageStats(): Promise<StorageStats> {
   // 1. Inspect Supabase Cloud Storage
   if (supabase && isCloud) {
     try {
-      const { data: cloudList, error } = await supabase.storage
+      // Check declarations folder where documents are stored
+      const { data: cloudList, error: decError } = await supabase.storage
         .from(BUCKET_NAME)
         .list('declarations', { limit: 1000 });
 
-      if (!error && cloudList) {
-        cloudFiles = cloudList.length;
+      if (!decError && cloudList) {
         for (const item of cloudList) {
-          cloudBytes += item.metadata?.size || 0;
+          if (item.name && !item.name.endsWith('/')) {
+            cloudFiles++;
+            const size = Number(item.metadata?.size || (item as any).size || 0);
+            cloudBytes += size;
+          }
+        }
+      }
+
+      // Also inspect root bucket for any files
+      const { data: rootList, error: rootError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .list('', { limit: 1000 });
+
+      if (!rootError && rootList) {
+        for (const item of rootList) {
+          if (item.name && item.name !== 'declarations' && !item.name.endsWith('/')) {
+            cloudFiles++;
+            const size = Number(item.metadata?.size || (item as any).size || 0);
+            cloudBytes += size;
+          }
         }
       }
     } catch (err: any) {
