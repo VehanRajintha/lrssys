@@ -41,6 +41,7 @@ export interface CusDecRecord {
 export interface Settings {
   geminiApiKey: string;
   geminiBackupApiKey?: string;
+  geminiApiKey3?: string;
   customApiKey?: string;
   useCustomApiKey?: boolean;
   geminiModel: string;

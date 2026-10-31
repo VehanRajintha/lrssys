@@ -6,13 +6,10 @@ import { loadMasterDictionary, snapToMasterRegistry } from './masterDictionary';
 // Verified active fast vision models according to Google API
 const RECOMMENDED_MODELS = [
   'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
   'gemini-3.5-flash',
   'gemini-3.6-flash',
-  'gemini-flash-lite-latest',
-  'gemini-3-flash-preview',
-  'gemini-3.1-flash-lite',
-  'gemini-3.8-flash',
-  'gemini-flash-latest'
+  'gemini-3.1-flash-lite'
 ];
 
 // In-memory active key index tracker
@@ -23,7 +20,7 @@ let activeApiKeyIndex = 0;
  * Optimized Multi-Pass Pipeline:
  * 1. Image Pre-processing (Sharp normalization + contrast enhancement + 2048px bounding box)
  * 2. Primary Gemini Vision Extraction with specialized CusDec layout prompt + constrained schema
- * 3. Multi-Key Fallback (Primary Key -> Backup Key auto-failover on daily limit)
+ * 3. Multi-Key Fallback (Primary Key -> Backup Key -> Key 3 dedicated stream binding)
  * 4. Conditional Macro-Crop Verification (only triggered if stamp digits < 5 or confidence < 85)
  * 5. Algorithmic Disambiguation (Mechanical wheel O->0, regex validation, leading zero preservation)
  * 6. Master Registry Auto-Snap (Levenshtein match against registered legal entities with hash-map indexing)
@@ -31,7 +28,8 @@ let activeApiKeyIndex = 0;
 export async function extractDocumentData(
   imageInput: string | Buffer,
   settings: Partial<Settings> = {},
-  fallbackFilename?: string
+  fallbackFilename?: string,
+  workerStreamId?: number
 ): Promise<CusDecRecord> {
   const filename = fallbackFilename || (typeof imageInput === 'string' ? path.basename(imageInput) : 'document.jpg');
   const imagePath = typeof imageInput === 'string' ? imageInput : filename;
@@ -51,7 +49,16 @@ export async function extractDocumentData(
   } else {
     const primaryKey = (process.env.GEMINI_API_KEY || settings.geminiApiKey || '').trim();
     const backupKey = (process.env.GEMINI_BACKUP_API_KEY || settings.geminiBackupApiKey || '').trim();
-    apiKeys = [primaryKey, backupKey].filter(k => k && k.length > 10);
+    const tertiaryKey = (process.env.GEMINI_API_KEY_3 || settings.geminiApiKey3 || '').trim();
+    apiKeys = [primaryKey, backupKey, tertiaryKey].filter(k => k && k.length > 10);
+  }
+
+  // 1:1 Thread-to-Key Dedication: Map Stream 1 -> Key 1, Stream 2 -> Key 2, Stream 3 -> Key 3
+  let preferredKeyIndex = 0;
+  if (workerStreamId && workerStreamId > 0 && apiKeys.length > 0) {
+    preferredKeyIndex = (workerStreamId - 1) % apiKeys.length;
+  } else {
+    preferredKeyIndex = (activeApiKeyIndex++) % (apiKeys.length || 1);
   }
 
   const selectedModel = settings.geminiModel || 'gemini-3.5-flash-lite';
@@ -59,8 +66,8 @@ export async function extractDocumentData(
   // 2. Call Gemini Vision API with Multi-Key Failover on Daily Quota Exceeded
   if (apiKeys.length > 0) {
     try {
-      console.log(`[AI Extraction] Calling Gemini Vision (${selectedModel}) on ${filename}...`);
-      const { result, usedApiKey } = await callGeminiWithRetry(base64Image, mimeType, apiKeys, selectedModel);
+      console.log(`[AI Extraction] Calling Gemini Vision (${selectedModel}) on ${filename} [Thread Key ${preferredKeyIndex + 1}/${apiKeys.length}]...`);
+      const { result, usedApiKey } = await callGeminiWithRetry(base64Image, mimeType, apiKeys, selectedModel, preferredKeyIndex);
 
       // 3. Conditional Macro Crop Verification:
       // Only triggered if primary pass produced ambiguous or truncated stamp (< 5 digits) or low confidence
@@ -109,7 +116,8 @@ async function callGeminiWithRetry(
   mimeType: string,
   apiKeys: string[],
   initialModel: string,
-  maxAttempts: number = 6
+  preferredKeyIndex: number = 0,
+  maxAttempts: number = 8
 ): Promise<{ result: any; usedApiKey: string }> {
   const modelsToTry = [
     initialModel,
@@ -117,11 +125,12 @@ async function callGeminiWithRetry(
   ];
 
   let lastError: Error | null = null;
-  let keyIndex = activeApiKeyIndex % apiKeys.length;
+  let keyIndex = preferredKeyIndex % apiKeys.length;
+  let modelIndex = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const currentModel = modelsToTry[(attempt - 1) % modelsToTry.length];
-    const currentKey = apiKeys[keyIndex];
+    const currentModel = modelsToTry[modelIndex % modelsToTry.length];
+    const currentKey = apiKeys[keyIndex % apiKeys.length];
 
     try {
       const result = await executeGeminiRequest(base64Data, mimeType, currentKey, currentModel);
@@ -129,45 +138,54 @@ async function callGeminiWithRetry(
       return { result, usedApiKey: currentKey };
     } catch (err: any) {
       lastError = err;
-      const isDailyLimit = err.message.includes('per day limit exceeded') ||
-                           err.message.includes('Quota exceeded for metric');
-      const isRateLimit = !isDailyLimit && (err.message.includes('429') || err.message.includes('quota') || err.message.includes('RESOURCE_EXHAUSTED'));
-      const isOverloaded = err.message.includes('503') || err.message.includes('500');
+      const errMsg = err.message || '';
+      const isDailyLimit = errMsg.includes('per day limit exceeded') || errMsg.includes('Quota exceeded for metric');
+      const isRateLimit = !isDailyLimit && (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED'));
+      const isOverloaded = errMsg.includes('503') || errMsg.includes('500') || errMsg.includes('high demand') || errMsg.includes('UNAVAILABLE');
+      const isNotFound = errMsg.includes('404') || errMsg.includes('no longer available') || errMsg.includes('not found');
 
-      // 1. If daily quota is hit and backup key is available, switch keys IMMEDIATELY with 0 delay!
-      if (isDailyLimit && apiKeys.length > 1 && keyIndex < apiKeys.length - 1) {
-        keyIndex++;
-        activeApiKeyIndex = keyIndex;
-        console.warn(`[API Key Failover] Primary API key hit daily limit. Seamlessly switched to backup API key for ${currentModel}...`);
+      console.warn(`[Gemini Attempt ${attempt}/${maxAttempts}] ${currentModel} on Key ${keyIndex + 1}/${apiKeys.length}: ${errMsg.slice(0, 100)}`);
+
+      // 1. If model not found (404), immediately try next model without long delay
+      if (isNotFound) {
+        modelIndex++;
         continue;
       }
 
-      // 2. If all keys hit daily limit for this model, instant failover to next model
-      if (isDailyLimit && attempt < maxAttempts) {
-        console.warn(`[Daily Quota Exceeded] ${currentModel} reached daily limit across active keys. Instantly falling over to next model...`);
-        keyIndex = 0; // Reset key index for the fresh model
-        continue;
+      // 2. If daily quota is hit and backup key is available, switch keys IMMEDIATELY with 0 delay!
+      if (isDailyLimit) {
+        if (apiKeys.length > 1) {
+          keyIndex = (keyIndex + 1) % apiKeys.length;
+          console.warn(`[API Key Failover] Key hit daily limit. Switched to key ${keyIndex + 1} for ${currentModel}...`);
+          continue;
+        } else {
+          modelIndex++;
+          continue;
+        }
       }
 
       // 3. Short backoff / key rotation for temporary rate limits (429 / 503)
       if ((isRateLimit || isOverloaded) && attempt < maxAttempts) {
-        // If backup key is available on temporary rate limit, rotate key first
+        // If alternate key is available, switch key immediately with minimal 250ms pause
         if (apiKeys.length > 1 && attempt % 2 === 1) {
           keyIndex = (keyIndex + 1) % apiKeys.length;
-          console.warn(`[Rate Limit] HTTP 429 on ${currentModel}. Rotating to alternate API key...`);
+          console.warn(`[Concurrency Failover] Shifting stream to alternate API key ${keyIndex + 1}...`);
           await new Promise(res => setTimeout(res, 250));
           continue;
         }
 
-        const backoffMs = Math.min(8000, 1500 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 800));
-        console.warn(`[Rate Limit] HTTP 429 on ${currentModel}. Backing off ${(backoffMs / 1000).toFixed(1)}s (Attempt ${attempt}/${maxAttempts})...`);
+        const backoffMs = Math.min(5000, 800 * Math.pow(1.3, attempt) + Math.floor(Math.random() * 400));
+        console.warn(`[Retry Backoff] Waiting ${(backoffMs / 1000).toFixed(1)}s (Attempt ${attempt}/${maxAttempts})...`);
         await new Promise(res => setTimeout(res, backoffMs));
+        if (attempt >= 4 && modelIndex === 0) {
+          modelIndex++;
+        }
         continue;
       }
 
-      // 4. If model not found (404), immediately try next model without long delay
-      if (err.message.includes('404') && attempt < maxAttempts) {
-        console.warn(`[Model 404] ${currentModel} not available. Switching to next recommended model...`);
+      if (attempt < maxAttempts) {
+        if (apiKeys.length > 1) keyIndex = (keyIndex + 1) % apiKeys.length;
+        await new Promise(res => setTimeout(res, 500));
         continue;
       }
 
@@ -429,7 +447,15 @@ export function processAndValidateResult(
   }
 
   confidence = Math.max(0, Math.min(100, confidence));
-  const status: RecordStatus = (issues.length === 0 && confidence >= threshold) ? 'VERIFIED' : 'NEEDS_REVIEW';
+
+  // Determine critical blocking issues vs informational warnings
+  const hasCriticalIssue = 
+    !stamp || stamp === '000000' ||
+    !cusRef || cusRef === 'UNKNOWN' ||
+    !consignee || consignee === 'UNKNOWN' || consignee.includes('UNKNOWN') ||
+    issues.some(i => i.includes('Missing Counter Stamp Number') || i.includes('Missing Customs Reference Number') || i.includes('Consignee Name is missing'));
+
+  const status: RecordStatus = (!hasCriticalIssue && confidence >= Math.min(threshold, 75)) ? 'VERIFIED' : 'NEEDS_REVIEW';
 
   return {
     id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),

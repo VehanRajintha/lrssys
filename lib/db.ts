@@ -14,6 +14,7 @@ if (!fs.existsSync(DATA_DIR)) {
 const DEFAULT_SETTINGS: Settings = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiBackupApiKey: process.env.GEMINI_BACKUP_API_KEY || '',
+  geminiApiKey3: process.env.GEMINI_API_KEY_3 || '',
   customApiKey: '',
   useCustomApiKey: false,
   geminiModel: 'gemini-3.5-flash-lite',
@@ -161,6 +162,7 @@ export async function initSupabaseSync(force = false): Promise<void> {
         settingsCache = {
           geminiApiKey: settingsData.gemini_api_key || settingsCache.geminiApiKey,
           geminiBackupApiKey: settingsData.gemini_backup_api_key || settingsCache.geminiBackupApiKey,
+          geminiApiKey3: settingsData.gemini_api_key_3 || settingsCache.geminiApiKey3 || process.env.GEMINI_API_KEY_3 || '',
           geminiModel: settingsData.gemini_model || settingsCache.geminiModel,
           autoVerifyThreshold: settingsData.auto_verify_threshold || settingsCache.autoVerifyThreshold,
           workerConcurrency: settingsData.worker_concurrency || settingsCache.workerConcurrency,
@@ -530,6 +532,7 @@ export function updateSettings(updates: Partial<Settings>): Settings {
     ...updates,
     geminiApiKey: process.env.GEMINI_API_KEY || settingsCache.geminiApiKey,
     geminiBackupApiKey: process.env.GEMINI_BACKUP_API_KEY || settingsCache.geminiBackupApiKey,
+    geminiApiKey3: updates.geminiApiKey3 !== undefined ? updates.geminiApiKey3 : (settingsCache.geminiApiKey3 || process.env.GEMINI_API_KEY_3 || ''),
     customApiKey: updates.customApiKey !== undefined ? updates.customApiKey : (settingsCache.customApiKey || ''),
     useCustomApiKey: updates.useCustomApiKey !== undefined ? Boolean(updates.useCustomApiKey) : (settingsCache.useCustomApiKey || false)
   };
@@ -542,6 +545,7 @@ export function updateSettings(updates: Partial<Settings>): Settings {
         id: 'default',
         gemini_api_key: settingsCache.geminiApiKey || null,
         gemini_backup_api_key: settingsCache.geminiBackupApiKey || null,
+        gemini_api_key_3: settingsCache.geminiApiKey3 || null,
         gemini_model: settingsCache.geminiModel,
         auto_verify_threshold: settingsCache.autoVerifyThreshold,
         worker_concurrency: settingsCache.workerConcurrency,

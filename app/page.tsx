@@ -73,6 +73,7 @@ import {
   ArrowUpRight,
   HardDrive,
   Lock,
+  Key,
   Cpu,
   Zap,
   Clock,
@@ -350,11 +351,12 @@ export default function LrsysPortal() {
   const [settings, setSettings] = useState<Settings>({
     geminiApiKey: '',
     geminiBackupApiKey: '',
+    geminiApiKey3: '',
     customApiKey: '',
     useCustomApiKey: false,
     geminiModel: 'gemini-3.5-flash-lite',
     autoVerifyThreshold: 90,
-    workerConcurrency: 6,
+    workerConcurrency: 3,
     consignorConsigneeMode: 'both',
     preserveLeadingZeros: true
   });
@@ -867,119 +869,117 @@ export default function LrsysPortal() {
           });
         }, 500);
 
-        try {
-          const formData = new FormData();
-          formData.append('documents', currentFile);
+        let fileProcessed = false;
+        let attempt = 0;
+        let lastUploadError = '';
 
-          const res = await fetch('/api/upload?process=1', {
-            method: 'POST',
-            body: formData
-          });
-
-          clearTimeout(stepTimer);
-
-          const text = await res.text();
-          let data: any = {};
+        while (!fileProcessed && attempt < 3 && !isClientCancelledRef.current) {
+          attempt++;
           try {
-            data = text ? JSON.parse(text) : {};
-          } catch {
-            throw new Error(`Server returned status ${res.status}`);
-          }
+            const formData = new FormData();
+            formData.append('documents', currentFile);
 
-          if (!res.ok) {
-            throw new Error(data.error || `Upload failed with status ${res.status}`);
-          }
-
-          if (data.record) {
-            // Instantly append newly extracted record in ledger state without collapsing duplicates!
-            setRecords(prev => {
-              const idx = prev.findIndex(r => r.id === data.record.id);
-              if (idx >= 0) {
-                const next = [...prev];
-                next[idx] = data.record;
-                return next;
-              }
-              return [data.record, ...prev];
+            const res = await fetch(`/api/upload?process=1&worker=${workerId}`, {
+              method: 'POST',
+              body: formData
             });
+
+            clearTimeout(stepTimer);
+
+            const text = await res.text();
+            let data: any = {};
+            try {
+              data = text ? JSON.parse(text) : {};
+            } catch {
+              throw new Error(`Server returned status ${res.status}`);
+            }
+
+            if (!res.ok) {
+              throw new Error(data.error || `Upload failed with status ${res.status}`);
+            }
+
+            if (data.record) {
+              // Instantly append newly extracted record in ledger state without collapsing duplicates!
+              setRecords(prev => {
+                const idx = prev.findIndex(r => r.id === data.record.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = data.record;
+                  return next;
+                }
+                return [data.record, ...prev];
+              });
+            }
+
+            // Real-time smooth storage capacity update
+            if (data.storageStats) {
+              setStorageStats(data.storageStats);
+            }
+
+            completedCount++;
+            fileProcessed = true;
+
+            updateStream(workerId, prev => ({
+              status: 'completed',
+              step: `Verified #${data.record?.greenStampNumber || 'OK'} (${data.record?.confidence || 98}%)`,
+              progress: 100,
+              completedInStream: prev.completedInStream + 1,
+              lastRecord: data.record ? {
+                stampNo: data.record.greenStampNumber,
+                customsRef: data.record.customsRefNumber,
+                consignee: data.record.consigneeName,
+                confidence: data.record.confidence,
+                isDuplicate: data.record.isDuplicate
+              } : undefined
+            }));
+          } catch (err: any) {
+            lastUploadError = err.message || 'Processing failed';
+            if (attempt < 3 && !isClientCancelledRef.current) {
+              updateStream(workerId, {
+                step: `Retrying (Attempt ${attempt + 1}/3)...`,
+                progress: 40
+              });
+              await new Promise(r => setTimeout(r, 800 * attempt));
+            }
           }
+        }
 
-          // Real-time smooth storage capacity update
-          if (data.storageStats) {
-            setStorageStats(data.storageStats);
-          } else {
-            setStorageStats(prev => {
-              const addedBytes = currentFile.size || 250000;
-              const nextTotalBytes = prev.totalBytes + addedBytes;
-              const nextTotalFiles = prev.totalFiles + 1;
-              const quotaBytes = 5 * 1024 * 1024 * 1024;
-              const percentUsed = parseFloat(((nextTotalBytes / quotaBytes) * 100).toFixed(2));
-              const formatK = (b: number) => {
-                if (!b) return '0.00 B';
-                const s = ['B', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(b) / Math.log(1024));
-                return (b / Math.pow(1024, i)).toFixed(2) + ' ' + s[i];
-              };
-              return {
-                ...prev,
-                totalBytes: nextTotalBytes,
-                totalFiles: nextTotalFiles,
-                totalFormatted: formatK(nextTotalBytes),
-                percentUsed,
-                cloudFiles: prev.cloudFiles + 1,
-                cloudBytes: prev.cloudBytes + addedBytes,
-                cloudFormatted: formatK(prev.cloudBytes + addedBytes)
-              };
-            });
-          }
-
-          completedCount++;
-
-          updateStream(workerId, prev => ({
-            status: 'completed',
-            step: `Verified #${data.record?.greenStampNumber || 'OK'} (${data.record?.confidence || 98}%)`,
-            progress: 100,
-            completedInStream: prev.completedInStream + 1,
-            lastRecord: data.record ? {
-              stampNo: data.record.greenStampNumber,
-              customsRef: data.record.customsRefNumber,
-              consignee: data.record.consigneeName,
-              confidence: data.record.confidence,
-              isDuplicate: data.record.isDuplicate
-            } : undefined
-          }));
-        } catch (err: any) {
+        if (!fileProcessed) {
           clearTimeout(stepTimer);
-          console.error(`Error processing ${currentFile.name}:`, err);
+          console.error(`Error processing ${currentFile.name}:`, lastUploadError);
           failedCount++;
           updateStream(workerId, prev => ({
             status: 'error',
-            step: `Error: ${err.message || 'Processing failed'}`,
+            step: `Error: ${lastUploadError}`,
             progress: 0,
             completedInStream: prev.completedInStream
           }));
-        } finally {
-          const totalDone = completedCount + failedCount;
-          const progressPercent = Math.round((totalDone / totalCount) * 100);
-          const elapsed = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
-          const dpm = Math.round((totalDone / elapsed) * 60);
-          const remaining = Math.max(0, totalCount - totalDone);
-          const eta = dpm > 0 ? Math.round((remaining / dpm) * 60) : 0;
-
-          setProcessingTelemetry({
-            startTime,
-            elapsedSeconds: elapsed,
-            docsPerMinute: dpm,
-            etaSeconds: eta
-          });
-
-          setQueueStatus(prev => ({
-            ...prev,
-            pendingCount: Math.max(0, totalCount - totalDone),
-            completedCount,
-            failedCount,
-            progressPercent
-          }));
         }
+
+        // Adaptive pacing between files
+        await new Promise(r => setTimeout(r, 150));
+
+        const totalDone = completedCount + failedCount;
+        const progressPercent = Math.round((totalDone / totalCount) * 100);
+        const elapsed = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
+        const dpm = Math.round((totalDone / elapsed) * 60);
+        const remaining = Math.max(0, totalCount - totalDone);
+        const eta = dpm > 0 ? Math.round((remaining / dpm) * 60) : 0;
+
+        setProcessingTelemetry({
+          startTime,
+          elapsedSeconds: elapsed,
+          docsPerMinute: dpm,
+          etaSeconds: eta
+        });
+
+        setQueueStatus(prev => ({
+          ...prev,
+          pendingCount: Math.max(0, totalCount - totalDone),
+          completedCount,
+          failedCount,
+          progressPercent
+        }));
       }
 
       updateStream(workerId, {
@@ -989,7 +989,13 @@ export default function LrsysPortal() {
       });
     };
 
-    const workers = Array.from({ length: concurrency }, (_, idx) => runWorker(idx + 1));
+    const workers = Array.from({ length: concurrency }, async (_, idx) => {
+      // Stagger worker start by 350ms to distribute stream initiation and prevent API bursts
+      if (idx > 0) {
+        await new Promise(r => setTimeout(r, idx * 350));
+      }
+      return runWorker(idx + 1);
+    });
     await Promise.all(workers);
 
     isClientProcessingRef.current = false;
@@ -2807,7 +2813,7 @@ export default function LrsysPortal() {
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
                       <Lock className="w-3 h-3 text-muted-foreground" />
-                      <span>Backup API Key (Auto-Failover)</span>
+                      <span>Backup API Key (Stream 02 Dedicated)</span>
                     </Label>
                     <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/50">
                       Pre-configured System Key
@@ -2821,7 +2827,30 @@ export default function LrsysPortal() {
                     className="text-xs font-mono rounded-xl bg-background/50 border-border/40 text-muted-foreground/80 cursor-not-allowed select-none"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Engages automatically with zero sleep when the primary hits daily 429 quota.
+                    Dedicated to Stream 02; auto-failover backup if Stream 01 hits quota.
+                  </p>
+                </div>
+
+                {/* Tertiary API Key (Stream 03 Dedicated) */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <Key className="w-3 h-3 text-emerald-500" />
+                      <span>Key 3 (Stream 03 Dedicated Key)</span>
+                    </Label>
+                    <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      3x Accelerator
+                    </span>
+                  </div>
+                  <Input
+                    type="password"
+                    placeholder="Enter 3rd Gemini API key (AQ.Ab8RN6...)"
+                    value={settings.geminiApiKey3 || ''}
+                    onChange={e => setSettings({ ...settings, geminiApiKey3: e.target.value })}
+                    className="text-xs font-mono rounded-xl bg-background border-border/60 focus:border-emerald-500"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Binds Stream 03 to its own isolated quota pool, tripling parallel throughput with 0 rate limit collisions.
                   </p>
                 </div>
 

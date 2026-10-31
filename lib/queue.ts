@@ -110,12 +110,18 @@ export class ProcessingQueue extends EventEmitter {
     } catch (err: any) {
       console.error(`Error processing task ${task.id} (${task.originalName}):`, err.message);
 
-      // If Rate Limit (429), automatically re-enqueue task and activate dynamic queue cooldown
-      if (err.message.includes('429') || err.message.includes('quota') || err.message.includes('RESOURCE_EXHAUSTED')) {
+      // If Rate Limit (429), 503, high demand, or temporary overload, automatically re-enqueue
+      const errMsg = err.message || '';
+      const isRetryable = errMsg.includes('429') || errMsg.includes('503') || errMsg.includes('500') ||
+                          errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') ||
+                          errMsg.includes('high demand') || errMsg.includes('UNAVAILABLE');
+
+      if (isRetryable) {
         task.retryCount = (task.retryCount || 0) + 1;
-        if (task.retryCount <= 3) {
-          this.rateLimitCooldownUntil = Math.max(this.rateLimitCooldownUntil, Date.now() + 3000);
-          console.warn(`[Queue Rate Limit] Re-enqueuing ${task.originalName} (Retry ${task.retryCount}/3)...`);
+        if (task.retryCount <= 4) {
+          const waitTime = Math.min(8000, 2000 * task.retryCount);
+          this.rateLimitCooldownUntil = Math.max(this.rateLimitCooldownUntil, Date.now() + waitTime);
+          console.warn(`[Queue Auto-Retry] ${task.originalName} encountered ${errMsg.slice(0, 50)}. Re-enqueuing (Retry ${task.retryCount}/4, cooling down ${waitTime}ms)...`);
           this.queue.unshift(task); // Put back to front of queue
           this.inFlight.delete(task.id);
           this.processNext();

@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const processSync = searchParams.get('process') === '1' || searchParams.get('process') === 'true';
+    const workerParam = searchParams.get('worker');
+    const workerStreamId = workerParam ? parseInt(workerParam, 10) : undefined;
 
     const formData = await request.formData();
     const files = formData.getAll('documents') as File[];
@@ -41,34 +43,41 @@ export async function POST(request: NextRequest) {
         // High-speed parallel execution: Upload to cloud storage & run Vision AI in parallel
         const [stored, extractionResult] = await Promise.all([
           uploadDocumentFile(buffer, filename, file.type || 'image/jpeg'),
-          extractor.extractDocumentData(buffer, settings, filename).catch((err: any) => {
+          extractor.extractDocumentData(buffer, settings, filename, workerStreamId).catch(async (err: any) => {
             console.error(`[Extraction error on ${file.name}]:`, err.message);
-            const fallback: CusDecRecord = {
-              id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-              filename,
-              imagePath: '',
-              imageUrl: '',
-              originalName: file.name,
-              fileHash,
-              greenStampNumber: '000000',
-              customsRefNumber: 'UNKNOWN',
-              customsDate: new Date().toLocaleDateString('en-GB'),
-              consigneeName: 'UNKNOWN CONSIGNEE',
-              consigneeTIN: '',
-              declarantName: 'UNKNOWN DECLARANT',
-              declarantTIN: '',
-              blNumber: '',
-              packagesCount: '',
-              goodsDescription: '',
-              confidence: 25,
-              status: 'NEEDS_REVIEW',
-              issues: [`Extraction error: ${err.message}`],
-              boundingBoxes: null,
-              manualCorrection: false,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            };
-            return fallback;
+            // Rescue retry with alternate key
+            try {
+              await new Promise(r => setTimeout(r, 800));
+              return await extractor.extractDocumentData(buffer, settings, filename, (workerStreamId ? workerStreamId + 1 : 2));
+            } catch (rescueErr: any) {
+              console.error(`[Rescue pass failed for ${file.name}]:`, rescueErr.message);
+              const fallback: CusDecRecord = {
+                id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                filename,
+                imagePath: '',
+                imageUrl: '',
+                originalName: file.name,
+                fileHash,
+                greenStampNumber: '000000',
+                customsRefNumber: 'UNKNOWN',
+                customsDate: new Date().toLocaleDateString('en-GB'),
+                consigneeName: 'UNKNOWN CONSIGNEE',
+                consigneeTIN: '',
+                declarantName: 'UNKNOWN DECLARANT',
+                declarantTIN: '',
+                blNumber: '',
+                packagesCount: '',
+                goodsDescription: '',
+                confidence: 25,
+                status: 'NEEDS_REVIEW',
+                issues: [`Extraction error: ${rescueErr.message}`],
+                boundingBoxes: null,
+                manualCorrection: false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              return fallback;
+            }
           })
         ]);
 
