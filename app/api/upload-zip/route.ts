@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import AdmZip from 'adm-zip';
 import queue from '@/lib/queue';
-
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+import { uploadDocumentFile } from '@/lib/storage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,27 +18,31 @@ export async function POST(request: NextRequest) {
     const zipBuffer = Buffer.from(bytes);
     const zip = new AdmZip(zipBuffer);
     const zipEntries = zip.getEntries();
-    const extractedFiles: Array<{ filePath: string; originalName: string; fileHash: string }> = [];
+    const extractedFiles: Array<{ filePath: string; originalName: string; fileHash: string; imageUrl?: string }> = [];
 
     const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
 
-    zipEntries.forEach(entry => {
+    for (const entry of zipEntries) {
       if (!entry.isDirectory) {
         const ext = path.extname(entry.entryName).toLowerCase();
         if (allowedExtensions.includes(ext)) {
           const cleanName = path.basename(entry.entryName);
           const dataBuf = entry.getData();
           const fileHash = crypto.createHash('md5').update(dataBuf).digest('hex');
-          const destPath = path.join(UPLOADS_DIR, `zip_${Date.now()}_${cleanName}`);
-          fs.writeFileSync(destPath, dataBuf);
+          const destName = `zip_${Date.now()}_${cleanName}`;
+          const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.pdf' ? 'application/pdf' : 'image/jpeg';
+
+          const stored = await uploadDocumentFile(dataBuf, destName, mimeType);
+
           extractedFiles.push({
-            filePath: destPath,
+            filePath: stored.isCloud ? stored.publicUrl : stored.storagePath,
+            imageUrl: stored.publicUrl,
             originalName: cleanName,
             fileHash
           });
         }
       }
-    });
+    }
 
     if (extractedFiles.length === 0) {
       return NextResponse.json({ error: 'No valid image files found inside the ZIP archive.' }, { status: 400 });

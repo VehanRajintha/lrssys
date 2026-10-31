@@ -2,6 +2,27 @@ import sharp from 'sharp';
 import fs from 'fs';
 
 /**
+ * Helper to resolve buffer from local file, remote URL (Supabase Storage), or existing Buffer
+ */
+export async function resolveImageBuffer(imageInput: string | Buffer): Promise<Buffer> {
+  if (Buffer.isBuffer(imageInput)) {
+    return imageInput;
+  }
+  if (typeof imageInput === 'string') {
+    if (imageInput.startsWith('http://') || imageInput.startsWith('https://')) {
+      const response = await fetch(imageInput);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image from storage URL: ${response.statusText}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+    return fs.readFileSync(imageInput);
+  }
+  throw new Error('Unsupported image input type');
+}
+
+/**
  * Pre-process CusDec document scans to optimize Optical Character Recognition.
  * - Auto-orients based on EXIF tag
  * - Resizes oversized smartphone scans to an optimal bounding box (2048x2048) preserving 100% fine detail while reducing network upload payload by up to 90%
@@ -16,7 +37,7 @@ export async function preprocessDocument(imageInput: string | Buffer): Promise<{
   mimeType: string;
 }> {
   try {
-    const inputBuffer = typeof imageInput === 'string' ? fs.readFileSync(imageInput) : imageInput;
+    const inputBuffer = await resolveImageBuffer(imageInput);
 
     const pipeline = sharp(inputBuffer)
       .rotate() // auto-orient based on EXIF tag
@@ -35,13 +56,17 @@ export async function preprocessDocument(imageInput: string | Buffer): Promise<{
     };
   } catch (err: any) {
     console.warn(`[Image Pre-Processor] Warning: Sharp optimization failed (${err.message}). Using raw buffer.`);
-    const rawBuffer = typeof imageInput === 'string' ? fs.readFileSync(imageInput) : imageInput;
-    return {
-      buffer: rawBuffer,
-      width: 1800,
-      height: 2400,
-      mimeType: 'image/jpeg'
-    };
+    try {
+      const rawBuffer = await resolveImageBuffer(imageInput);
+      return {
+        buffer: rawBuffer,
+        width: 1800,
+        height: 2400,
+        mimeType: 'image/jpeg'
+      };
+    } catch {
+      throw err;
+    }
   }
 }
 
@@ -54,7 +79,7 @@ export async function cropBoundingBox(
   bbox: [number, number, number, number]
 ): Promise<Buffer | null> {
   try {
-    const inputBuffer = typeof imageInput === 'string' ? fs.readFileSync(imageInput) : imageInput;
+    const inputBuffer = await resolveImageBuffer(imageInput);
     const metadata = await sharp(inputBuffer).metadata();
     const imgWidth = metadata.width || 1800;
     const imgHeight = metadata.height || 2400;

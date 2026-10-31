@@ -21,9 +21,12 @@ export async function POST() {
   const idsToRemove: string[] = [];
 
   for (const r of unknownRecords) {
-    if (r.imagePath && fs.existsSync(r.imagePath)) {
+    const isCloud = (r.imageUrl && r.imageUrl.startsWith('http')) || (r.imagePath && r.imagePath.startsWith('http'));
+    const isLocal = r.imagePath && fs.existsSync(r.imagePath);
+
+    if (isCloud || isLocal) {
       toProcess.push({
-        filePath: r.imagePath,
+        filePath: isCloud ? (r.imageUrl || r.imagePath) : r.imagePath,
         originalName: r.originalName || r.filename,
         fileHash: r.fileHash || null
       });
@@ -32,7 +35,7 @@ export async function POST() {
   }
 
   if (toProcess.length === 0) {
-    return NextResponse.json({ error: 'No valid image files found on disk for unknown records.' }, { status: 400 });
+    return NextResponse.json({ error: 'No valid image files found for unknown records.' }, { status: 400 });
   }
 
   // Remove the old unknown records so fresh extractions take their place

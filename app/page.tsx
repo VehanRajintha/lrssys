@@ -1502,7 +1502,7 @@ export default function LrsysPortal() {
               >
                 {selectedRecord?.filename ? (
                   <img
-                    src={`/api/images/${encodeURIComponent(selectedRecord.filename)}`}
+                    src={selectedRecord.imageUrl || `/api/images/${encodeURIComponent(selectedRecord.filename)}`}
                     alt="Customs Declaration Document"
                     draggable={false}
                     className="max-w-full max-h-full object-contain pointer-events-none select-none"

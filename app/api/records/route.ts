@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get('status');
   const search = searchParams.get('search');
 
+  await db.initSupabaseSync();
   let records = db.getRecords();
 
   if (status && status !== 'ALL') {

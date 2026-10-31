@@ -7,6 +7,7 @@ import { QueueStatus, CusDecRecord } from './types';
 export interface QueueTask {
   id: string;
   filePath: string;
+  imageUrl?: string;
   originalName: string;
   fileHash: string | null;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -34,12 +35,13 @@ export class ProcessingQueue extends EventEmitter {
     super();
   }
 
-  enqueue(imageFiles: Array<{ filePath: string; originalName?: string; fileHash?: string | null }>): void {
+  enqueue(imageFiles: Array<{ filePath: string; originalName?: string; fileHash?: string | null; imageUrl?: string }>): void {
     const filesArray = Array.isArray(imageFiles) ? imageFiles : [imageFiles];
     for (const file of filesArray) {
       this.queue.push({
         id: 'TASK_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
         filePath: file.filePath,
+        imageUrl: file.imageUrl,
         originalName: file.originalName || path.basename(file.filePath),
         fileHash: file.fileHash || null,
         status: 'PENDING',
@@ -93,6 +95,9 @@ export class ProcessingQueue extends EventEmitter {
       extractedRecord.originalName = task.originalName;
       if (task.fileHash) {
         extractedRecord.fileHash = task.fileHash;
+      }
+      if (task.imageUrl) {
+        extractedRecord.imageUrl = task.imageUrl;
       }
 
       // Save to persistent storage (auto-merges in-place with debounced I/O)

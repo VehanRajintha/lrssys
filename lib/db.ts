@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { CusDecRecord, Settings, Stats } from './types';
+import { getSupabase, isSupabaseConfigured } from './supabase';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
@@ -46,7 +47,138 @@ function writeJsonFile<T>(filePath: string, data: T): void {
 let recordsCache: CusDecRecord[] = readJsonFile<CusDecRecord[]>(RECORDS_FILE, []);
 let settingsCache: Settings = { ...DEFAULT_SETTINGS, ...readJsonFile<Partial<Settings>>(SETTINGS_FILE, {}) };
 
-// High-speed debounced disk persistence
+// Supabase sync tracking
+let isSupabaseInitialized = false;
+let syncPromise: Promise<void> | null = null;
+
+async function safeSupabaseExec(action: () => PromiseLike<any>, context: string): Promise<void> {
+  try {
+    const res = await action();
+    if (res && res.error) {
+      console.warn(`[Supabase ${context} Error]:`, res.error.message);
+    }
+  } catch (err: any) {
+    console.warn(`[Supabase ${context} Exception]:`, err.message);
+  }
+}
+
+function recordToRow(r: CusDecRecord) {
+  return {
+    id: r.id,
+    filename: r.filename,
+    image_url: r.imageUrl,
+    original_name: r.originalName || null,
+    file_hash: r.fileHash || null,
+    green_stamp_number: r.greenStampNumber || '000000',
+    customs_ref_number: r.customsRefNumber || 'UNKNOWN',
+    customs_date: r.customsDate || null,
+    consignee_name: r.consigneeName || 'UNKNOWN',
+    consignee_tin: r.consigneeTIN || null,
+    declarant_name: r.declarantName || 'NOT SPECIFIED',
+    declarant_tin: r.declarantTIN || null,
+    bl_number: r.blNumber || null,
+    packages_count: r.packagesCount || null,
+    goods_description: r.goodsDescription || null,
+    confidence: r.confidence || 0,
+    status: r.status || 'NEEDS_REVIEW',
+    issues: r.issues || [],
+    bounding_boxes: r.boundingBoxes || null,
+    manual_correction: r.manualCorrection || false,
+    macro_zoom_applied: r.macroZoomApplied || false,
+    matched_master_name: r.matchedMasterName || null,
+    merge_count: r.mergeCount || 1,
+    created_at: r.createdAt || new Date().toISOString(),
+    updated_at: r.updatedAt || new Date().toISOString()
+  };
+}
+
+function rowToRecord(row: any): CusDecRecord {
+  return {
+    id: row.id,
+    filename: row.filename,
+    imagePath: row.image_url,
+    imageUrl: row.image_url,
+    originalName: row.original_name || undefined,
+    fileHash: row.file_hash || null,
+    greenStampNumber: row.green_stamp_number || '000000',
+    customsRefNumber: row.customs_ref_number || 'UNKNOWN',
+    customsDate: row.customs_date || '',
+    consigneeName: row.consignee_name || 'UNKNOWN',
+    consigneeTIN: row.consignee_tin || '',
+    declarantName: row.declarant_name || 'NOT SPECIFIED',
+    declarantTIN: row.declarant_tin || '',
+    blNumber: row.bl_number || '',
+    packagesCount: row.packages_count || '',
+    goodsDescription: row.goods_description || '',
+    confidence: Number(row.confidence || 0),
+    status: row.status || 'NEEDS_REVIEW',
+    issues: Array.isArray(row.issues) ? row.issues : [],
+    boundingBoxes: row.bounding_boxes || null,
+    manualCorrection: Boolean(row.manual_correction),
+    macroZoomApplied: Boolean(row.macro_zoom_applied),
+    matchedMasterName: row.matched_master_name || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    mergeCount: row.merge_count || 1
+  };
+}
+
+/**
+ * Initialize and sync in-memory cache with Supabase database (if configured)
+ */
+export async function initSupabaseSync(): Promise<void> {
+  if (isSupabaseInitialized || !isSupabaseConfigured()) return;
+  if (syncPromise) return syncPromise;
+
+  syncPromise = (async () => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      const { data: recordsData, error: recError } = await supabase
+        .from('cusdec_records')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!recError && recordsData) {
+        recordsCache = recordsData.map(rowToRecord);
+      }
+
+      const { data: settingsData, error: setError } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('id', 'default')
+        .maybeSingle();
+
+      if (!setError && settingsData) {
+        settingsCache = {
+          geminiApiKey: settingsData.gemini_api_key || settingsCache.geminiApiKey,
+          geminiBackupApiKey: settingsData.gemini_backup_api_key || settingsCache.geminiBackupApiKey,
+          geminiModel: settingsData.gemini_model || settingsCache.geminiModel,
+          autoVerifyThreshold: settingsData.auto_verify_threshold || settingsCache.autoVerifyThreshold,
+          workerConcurrency: settingsData.worker_concurrency || settingsCache.workerConcurrency,
+          consignorConsigneeMode: settingsData.consignor_consignee_mode || settingsCache.consignorConsigneeMode,
+          preserveLeadingZeros: settingsData.preserve_leading_zeros !== undefined ? settingsData.preserve_leading_zeros : settingsCache.preserveLeadingZeros
+        };
+      }
+
+      isSupabaseInitialized = true;
+    } catch (err: any) {
+      console.warn('[Supabase Sync Warning]:', err.message);
+    } finally {
+      syncPromise = null;
+    }
+  })();
+
+  return syncPromise;
+}
+
+// Background sync on startup if Supabase is active
+if (isSupabaseConfigured()) {
+  initSupabaseSync().catch(console.error);
+}
+
+// High-speed debounced disk persistence for local mode
 let saveDebounceTimer: NodeJS.Timeout | null = null;
 
 export function scheduleRecordsSave(): void {
@@ -120,12 +252,13 @@ function findDuplicateIndex(record: Partial<CusDecRecord>): number {
 
 export function saveRecord(record: CusDecRecord): CusDecRecord {
   const existingIdx = findDuplicateIndex(record);
+  let saved: CusDecRecord;
 
   if (existingIdx >= 0) {
     const existing = recordsCache[existingIdx];
     const isManuallyCorrected = existing.status === 'CORRECTED' || existing.manualCorrection;
 
-    recordsCache[existingIdx] = {
+    saved = {
       ...existing,
       greenStampNumber: isManuallyCorrected ? existing.greenStampNumber : (record.greenStampNumber || existing.greenStampNumber),
       customsRefNumber: isManuallyCorrected ? existing.customsRefNumber : (record.customsRefNumber || existing.customsRefNumber),
@@ -143,18 +276,28 @@ export function saveRecord(record: CusDecRecord): CusDecRecord {
       updatedAt: new Date().toISOString(),
       mergeCount: (existing.mergeCount || 1) + 1
     };
-    scheduleRecordsSave();
-    return recordsCache[existingIdx];
+    recordsCache[existingIdx] = saved;
   } else {
-    recordsCache.unshift({
+    saved = {
       ...record,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       mergeCount: 1
-    });
-    scheduleRecordsSave();
-    return record;
+    };
+    recordsCache.unshift(saved);
   }
+
+  scheduleRecordsSave();
+
+  // Async Supabase Sync
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase();
+    if (supabase) {
+      safeSupabaseExec(() => supabase.from('cusdec_records').upsert(recordToRow(saved)), 'saveRecord');
+    }
+  }
+
+  return saved;
 }
 
 export function updateRecord(id: string, updates: Partial<CusDecRecord>): CusDecRecord | null {
@@ -169,6 +312,14 @@ export function updateRecord(id: string, updates: Partial<CusDecRecord>): CusDec
       updatedAt: new Date().toISOString()
     };
     scheduleRecordsSave();
+
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        safeSupabaseExec(() => supabase.from('cusdec_records').update(recordToRow(recordsCache[idx])).eq('id', id), 'updateRecord');
+      }
+    }
+
     return recordsCache[idx];
   }
   return null;
@@ -179,6 +330,13 @@ export function deleteRecord(id: string): boolean {
   recordsCache = recordsCache.filter(r => r.id !== id);
   if (recordsCache.length !== initialLen) {
     scheduleRecordsSave();
+
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        safeSupabaseExec(() => supabase.from('cusdec_records').delete().eq('id', id), 'deleteRecord');
+      }
+    }
     return true;
   }
   return false;
@@ -192,6 +350,13 @@ export function deleteRecords(ids: string[]): number {
   const deletedCount = initialLen - recordsCache.length;
   if (deletedCount > 0) {
     scheduleRecordsSave();
+
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        safeSupabaseExec(() => supabase.from('cusdec_records').delete().in('id', ids), 'deleteRecords');
+      }
+    }
   }
   return deletedCount;
 }
@@ -199,6 +364,14 @@ export function deleteRecords(ids: string[]): number {
 export function clearAllRecords(): boolean {
   recordsCache = [];
   flushRecordsSync();
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase();
+    if (supabase) {
+      safeSupabaseExec(() => supabase.from('cusdec_records').delete().neq('id', ''), 'clearAllRecords');
+    }
+  }
+
   return true;
 }
 
@@ -226,6 +399,13 @@ export function deduplicateExistingRecords(): number {
   if (removedCount > 0) {
     recordsCache = Array.from(seen.values());
     flushRecordsSync();
+
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        safeSupabaseExec(() => supabase.from('cusdec_records').upsert(recordsCache.map(recordToRow)), 'deduplicate');
+      }
+    }
   }
   return removedCount;
 }
@@ -240,6 +420,24 @@ export function updateSettings(updates: Partial<Settings>): Settings {
     ...updates
   };
   writeJsonFile(SETTINGS_FILE, settingsCache);
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabase();
+    if (supabase) {
+      safeSupabaseExec(() => supabase.from('app_settings').upsert({
+        id: 'default',
+        gemini_api_key: settingsCache.geminiApiKey || null,
+        gemini_backup_api_key: settingsCache.geminiBackupApiKey || null,
+        gemini_model: settingsCache.geminiModel,
+        auto_verify_threshold: settingsCache.autoVerifyThreshold,
+        worker_concurrency: settingsCache.workerConcurrency,
+        consignor_consignee_mode: settingsCache.consignorConsigneeMode,
+        preserve_leading_zeros: settingsCache.preserveLeadingZeros,
+        updated_at: new Date().toISOString()
+      }), 'updateSettings');
+    }
+  }
+
   return settingsCache;
 }
 

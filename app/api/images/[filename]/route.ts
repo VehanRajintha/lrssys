@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const SAMPLES_DIR = path.join(process.cwd(), 'samples');
@@ -36,6 +37,13 @@ export async function GET(
   }
 
   if (!targetPath || !fs.existsSync(targetPath)) {
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured()) {
+      const { data } = supabase.storage.from('cusdec-documents').getPublicUrl(`declarations/${filename}`);
+      if (data?.publicUrl) {
+        return NextResponse.redirect(data.publicUrl);
+      }
+    }
     return NextResponse.json({ error: 'Image file not found' }, { status: 404 });
   }
 

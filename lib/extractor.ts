@@ -427,7 +427,7 @@ export function processAndValidateResult(
     id: 'REC_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
     filename,
     imagePath,
-    imageUrl: `/api/images/${encodeURIComponent(filename)}`,
+    imageUrl: extracted.imageUrl || (imagePath.startsWith('http') ? imagePath : `/api/images/${encodeURIComponent(filename)}`),
     greenStampNumber: stamp,
     customsRefNumber: cusRef || 'UNKNOWN',
     customsDate: extracted.customsDate || '',

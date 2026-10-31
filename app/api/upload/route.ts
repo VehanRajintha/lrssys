@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import queue from '@/lib/queue';
-
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+import { uploadDocumentFile } from '@/lib/storage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files were uploaded.' }, { status: 400 });
     }
 
-    const enqueuedFiles: Array<{ filePath: string; originalName: string; fileHash: string | null }> = [];
+    const enqueuedFiles: Array<{ filePath: string; originalName: string; fileHash: string | null; imageUrl?: string }> = [];
 
     for (const file of files) {
       if (!file.name || typeof file.arrayBuffer !== 'function') continue;
@@ -28,12 +25,12 @@ export async function POST(request: NextRequest) {
       const ext = path.extname(file.name);
       const cleanBase = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `${cleanBase}_${Date.now()}${ext}`;
-      const filePath = path.join(UPLOADS_DIR, filename);
 
-      fs.writeFileSync(filePath, buffer);
+      const stored = await uploadDocumentFile(buffer, filename, file.type || 'image/jpeg');
 
       enqueuedFiles.push({
-        filePath,
+        filePath: stored.isCloud ? stored.publicUrl : stored.storagePath,
+        imageUrl: stored.publicUrl,
         originalName: file.name,
         fileHash
       });

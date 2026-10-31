@@ -7,36 +7,51 @@ import queue from '@/lib/queue';
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
 export async function POST() {
+  const existingRecords = db.getRecords();
   db.clearAllRecords();
   queue.resetStats();
 
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    return NextResponse.json({ error: 'Uploads directory not found' }, { status: 400 });
+  const toProcess: Array<{ filePath: string; originalName: string }> = [];
+  const seenNames = new Set<string>();
+
+  // Check cloud/existing records first
+  for (const r of existingRecords) {
+    const isCloud = (r.imageUrl && r.imageUrl.startsWith('http')) || (r.imagePath && r.imagePath.startsWith('http'));
+    if (isCloud && !seenNames.has(r.filename)) {
+      seenNames.add(r.filename);
+      toProcess.push({
+        filePath: r.imageUrl || r.imagePath,
+        originalName: r.originalName || r.filename
+      });
+    }
   }
 
-  const files = fs.readdirSync(UPLOADS_DIR);
-  const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
-  const toProcess: Array<{ filePath: string; originalName: string }> = [];
+  // Also check local uploads directory
+  if (fs.existsSync(UPLOADS_DIR)) {
+    const files = fs.readdirSync(UPLOADS_DIR);
+    const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+    const seenSizes = new Set<string>();
 
-  const seenSizes = new Set<string>();
-  files.forEach(f => {
-    const fullPath = path.join(UPLOADS_DIR, f);
-    const ext = path.extname(f).toLowerCase();
-    if (validExts.includes(ext) && fs.existsSync(fullPath)) {
-      const stat = fs.statSync(fullPath);
-      const key = `${stat.size}_${f.slice(f.indexOf('WhatsApp') > -1 ? f.indexOf('WhatsApp') : 0)}`;
-      if (!seenSizes.has(key)) {
-        seenSizes.add(key);
-        toProcess.push({
-          filePath: fullPath,
-          originalName: f
-        });
+    files.forEach(f => {
+      const fullPath = path.join(UPLOADS_DIR, f);
+      const ext = path.extname(f).toLowerCase();
+      if (validExts.includes(ext) && fs.existsSync(fullPath) && !seenNames.has(f)) {
+        const stat = fs.statSync(fullPath);
+        const key = `${stat.size}_${f.slice(f.indexOf('WhatsApp') > -1 ? f.indexOf('WhatsApp') : 0)}`;
+        if (!seenSizes.has(key)) {
+          seenSizes.add(key);
+          seenNames.add(f);
+          toProcess.push({
+            filePath: fullPath,
+            originalName: f
+          });
+        }
       }
-    }
-  });
+    });
+  }
 
   if (toProcess.length === 0) {
-    return NextResponse.json({ error: 'No uploaded images found to reprocess.' }, { status: 400 });
+    return NextResponse.json({ error: 'No documents or images found to reprocess.' }, { status: 400 });
   }
 
   queue.enqueue(toProcess);
