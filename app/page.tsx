@@ -1594,7 +1594,7 @@ export default function LrsysPortal() {
 
               {/* Viewport Stage */}
               <div
-                className={`w-full h-[460px] bg-slate-950 rounded-xl border relative flex items-center justify-center overflow-hidden viewport-canvas ${isDragging ? 'grabbing' : ''}`}
+                className={`w-full h-[460px] bg-black rounded-xl border relative flex items-center justify-center overflow-hidden viewport-canvas ${isDragging ? 'grabbing' : ''}`}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
