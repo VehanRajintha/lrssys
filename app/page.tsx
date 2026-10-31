@@ -1005,19 +1005,6 @@ export default function LrsysPortal() {
     }
   };
 
-  const loadDemoSample = async () => {
-    try {
-      showToast('Loading official sample 000073...', 'info');
-      const res = await fetch('/api/demo/load-sample', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setTimeout(fetchRecords, 500);
-      showToast('Demo Sample 000073 loaded successfully!', 'success');
-    } catch (err: any) {
-      showToast('Failed to load demo', 'error', err.message);
-    }
-  };
-
   // Drag and Drop
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1630,15 +1617,6 @@ export default function LrsysPortal() {
                     <FolderArchive className="w-4 h-4" />
                     <span>Import ZIP</span>
                   </Button>
-
-                  <Button
-                    variant="outline"
-                    onClick={loadDemoSample}
-                    className="gap-2"
-                  >
-                    <Sparkles className="w-4 h-4 text-primary" />
-                    <span>Load Demo 000073</span>
-                  </Button>
                 </div>
 
                 {/* Export & Ledger Utility Buttons */}
@@ -1911,7 +1889,7 @@ export default function LrsysPortal() {
                           <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                           <p className="font-medium">No customs declarations found</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            Upload document images or click "Load Demo 000073" above.
+                            Upload document images or import a ZIP archive above.
                           </p>
                         </TableCell>
                       </TableRow>
