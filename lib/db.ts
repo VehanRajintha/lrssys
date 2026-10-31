@@ -538,21 +538,46 @@ export function updateSettings(updates: Partial<Settings>): Settings {
   };
   writeJsonFile(SETTINGS_FILE, settingsCache);
 
+  if (updates.geminiApiKey3 !== undefined) {
+    process.env.GEMINI_API_KEY_3 = updates.geminiApiKey3;
+    try {
+      const envPath = path.join(process.cwd(), '.env.local');
+      if (fs.existsSync(envPath)) {
+        let envText = fs.readFileSync(envPath, 'utf8');
+        if (envText.includes('GEMINI_API_KEY_3=')) {
+          envText = envText.replace(/GEMINI_API_KEY_3=.*(\r?\n|$)/, `GEMINI_API_KEY_3=${updates.geminiApiKey3}$1`);
+        } else {
+          envText += `\nGEMINI_API_KEY_3=${updates.geminiApiKey3}\n`;
+        }
+        fs.writeFileSync(envPath, envText, 'utf8');
+      }
+    } catch (e: any) {
+      console.warn('Could not persist GEMINI_API_KEY_3 to .env.local:', e.message);
+    }
+  }
+
   if (isSupabaseConfigured()) {
     const supabase = getSupabase();
     if (supabase) {
-      safeSupabaseExec(() => supabase.from('app_settings').upsert({
-        id: 'default',
-        gemini_api_key: settingsCache.geminiApiKey || null,
-        gemini_backup_api_key: settingsCache.geminiBackupApiKey || null,
-        gemini_api_key_3: settingsCache.geminiApiKey3 || null,
-        gemini_model: settingsCache.geminiModel,
-        auto_verify_threshold: settingsCache.autoVerifyThreshold,
-        worker_concurrency: settingsCache.workerConcurrency,
-        consignor_consignee_mode: settingsCache.consignorConsigneeMode,
-        preserve_leading_zeros: settingsCache.preserveLeadingZeros,
-        updated_at: new Date().toISOString()
-      }), 'updateSettings');
+      safeSupabaseExec(async () => {
+        const payload: any = {
+          id: 'default',
+          gemini_api_key: settingsCache.geminiApiKey || null,
+          gemini_backup_api_key: settingsCache.geminiBackupApiKey || null,
+          gemini_model: settingsCache.geminiModel,
+          auto_verify_threshold: settingsCache.autoVerifyThreshold,
+          worker_concurrency: settingsCache.workerConcurrency,
+          consignor_consignee_mode: settingsCache.consignorConsigneeMode,
+          preserve_leading_zeros: settingsCache.preserveLeadingZeros,
+          updated_at: new Date().toISOString()
+        };
+        // Try with gemini_api_key_3 if set, fallback if column missing in Supabase schema
+        if (settingsCache.geminiApiKey3) {
+          const res = await supabase.from('app_settings').upsert({ ...payload, gemini_api_key_3: settingsCache.geminiApiKey3 });
+          if (!res.error) return res;
+        }
+        return await supabase.from('app_settings').upsert(payload);
+      }, 'updateSettings');
     }
   }
 

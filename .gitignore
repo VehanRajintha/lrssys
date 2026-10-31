@@ -19,6 +19,9 @@ runtime/
 .env*.local
 !.env.example
 
+# Local storage and persistent state
+data/
+
 # User uploads and generated test files
 uploads/*
 !uploads/.gitkeep

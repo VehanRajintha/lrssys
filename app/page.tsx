@@ -101,7 +101,6 @@ interface Toast {
   type: 'success' | 'warning' | 'info' | 'error';
   message: string;
   subtext?: string;
-  isExiting?: boolean;
 }
 
 export default function LrsysPortal() {
@@ -111,23 +110,15 @@ export default function LrsysPortal() {
   // Navigation: Declarations vs Tally
   const [activeSection, setActiveSection] = useState<'ocr' | 'tally'>('ocr');
 
-  // Toasts with smooth motion appear & disappear in top-right corner
+  // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const dismissToast = useCallback((id: string) => {
-    setToasts(prev => prev.map(t => t.id === id ? { ...t, isExiting: true } : t));
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 350);
-  }, []);
-
   const showToast = useCallback((message: string, type: 'success' | 'warning' | 'info' | 'error' = 'info', subtext?: string) => {
     const id = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 5);
-    setToasts(prev => [...prev.slice(-3), { id, type, message, subtext, isExiting: false }]);
+    setToasts(prev => [...prev.slice(-2), { id, type, message, subtext }]);
     setTimeout(() => {
-      dismissToast(id);
-    }, 3800);
-  }, [dismissToast]);
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  }, []);
 
   // Drag and drop state
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -158,20 +149,20 @@ export default function LrsysPortal() {
       if (seenGroup.has(i)) continue;
       const primary = records[i];
 
-      const pStamp = primary.greenStampNumber && primary.greenStampNumber !== '000000' && primary.greenStampNumber.length >= 4 
-        ? primary.greenStampNumber.trim() 
+      const pStamp = primary.greenStampNumber && primary.greenStampNumber !== '000000' && primary.greenStampNumber.length >= 4
+        ? primary.greenStampNumber.trim()
         : null;
-      const pRef = primary.customsRefNumber && primary.customsRefNumber !== 'UNKNOWN' && primary.customsRefNumber.length >= 4 
-        ? primary.customsRefNumber.replace(/\s+/g, '').toUpperCase() 
+      const pRef = primary.customsRefNumber && primary.customsRefNumber !== 'UNKNOWN' && primary.customsRefNumber.length >= 4
+        ? primary.customsRefNumber.replace(/\s+/g, '').toUpperCase()
         : null;
-      const pConsignee = primary.consigneeName && primary.consigneeName !== 'UNKNOWN' && primary.consigneeName.length >= 3 
-        ? primary.consigneeName.trim().toUpperCase() 
+      const pConsignee = primary.consigneeName && primary.consigneeName !== 'UNKNOWN' && primary.consigneeName.length >= 3
+        ? primary.consigneeName.trim().toUpperCase()
         : null;
-      const pDeclarant = primary.declarantName && primary.declarantName !== 'NOT SPECIFIED' && primary.declarantName.length >= 3 
-        ? primary.declarantName.trim().toUpperCase() 
+      const pDeclarant = primary.declarantName && primary.declarantName !== 'NOT SPECIFIED' && primary.declarantName.length >= 3
+        ? primary.declarantName.trim().toUpperCase()
         : null;
-      const pDate = primary.customsDate && primary.customsDate.trim().length >= 6 
-        ? primary.customsDate.trim() 
+      const pDate = primary.customsDate && primary.customsDate.trim().length >= 6
+        ? primary.customsDate.trim()
         : null;
 
       let groupHasDuplicates = false;
@@ -180,20 +171,20 @@ export default function LrsysPortal() {
         if (seenGroup.has(j)) continue;
         const candidate = records[j];
 
-        const cStamp = candidate.greenStampNumber && candidate.greenStampNumber !== '000000' && candidate.greenStampNumber.length >= 4 
-          ? candidate.greenStampNumber.trim() 
+        const cStamp = candidate.greenStampNumber && candidate.greenStampNumber !== '000000' && candidate.greenStampNumber.length >= 4
+          ? candidate.greenStampNumber.trim()
           : null;
-        const cRef = candidate.customsRefNumber && candidate.customsRefNumber !== 'UNKNOWN' && candidate.customsRefNumber.length >= 4 
-          ? candidate.customsRefNumber.replace(/\s+/g, '').toUpperCase() 
+        const cRef = candidate.customsRefNumber && candidate.customsRefNumber !== 'UNKNOWN' && candidate.customsRefNumber.length >= 4
+          ? candidate.customsRefNumber.replace(/\s+/g, '').toUpperCase()
           : null;
-        const cConsignee = candidate.consigneeName && candidate.consigneeName !== 'UNKNOWN' && candidate.consigneeName.length >= 3 
-          ? candidate.consigneeName.trim().toUpperCase() 
+        const cConsignee = candidate.consigneeName && candidate.consigneeName !== 'UNKNOWN' && candidate.consigneeName.length >= 3
+          ? candidate.consigneeName.trim().toUpperCase()
           : null;
-        const cDeclarant = candidate.declarantName && candidate.declarantName !== 'NOT SPECIFIED' && candidate.declarantName.length >= 3 
-          ? candidate.declarantName.trim().toUpperCase() 
+        const cDeclarant = candidate.declarantName && candidate.declarantName !== 'NOT SPECIFIED' && candidate.declarantName.length >= 3
+          ? candidate.declarantName.trim().toUpperCase()
           : null;
-        const cDate = candidate.customsDate && candidate.customsDate.trim().length >= 6 
-          ? candidate.customsDate.trim() 
+        const cDate = candidate.customsDate && candidate.customsDate.trim().length >= 6
+          ? candidate.customsDate.trim()
           : null;
 
         let matchCount = 0;
@@ -205,7 +196,7 @@ export default function LrsysPortal() {
 
         // Duplicate match: Must match primary identifiers (Stamp + Ref) AND at least one party/date (reaching >= 3 matching critical fields)
         const isMatch = (pStamp && cStamp && pStamp === cStamp && pRef && cRef && pRef === cRef && matchCount >= 3) ||
-                        (primary.fileHash && candidate.fileHash && primary.fileHash === candidate.fileHash && (pStamp === cStamp || pRef === cRef));
+          (primary.fileHash && candidate.fileHash && primary.fileHash === candidate.fileHash && (pStamp === cStamp || pRef === cRef));
 
         if (isMatch) {
           dupIds.add(candidate.id);
@@ -399,7 +390,7 @@ export default function LrsysPortal() {
             fetchRecords(false);
           }
         }
-      } catch (err) {}
+      } catch (err) { }
     }, 4000);
 
     return () => clearInterval(interval);
@@ -547,7 +538,7 @@ export default function LrsysPortal() {
         const data = await res.json();
         setSettings(data);
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const fetchSystemInfo = async () => {
@@ -557,7 +548,7 @@ export default function LrsysPortal() {
         const data = await res.json();
         setLanUrl(data.primaryLanUrl || `http://localhost:${data.port}`);
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const fetchStorageStats = async (showLoading = false) => {
@@ -1252,65 +1243,22 @@ export default function LrsysPortal() {
       className="min-h-screen flex flex-col bg-background text-foreground"
     >
       {/* ========================================================
-           TOP-RIGHT FLOATING TOAST NOTIFICATIONS (Smooth Motion)
+           FLOATING TOAST NOTIFICATIONS (shadcn style)
            ======================================================== */}
-      <div className="fixed top-5 right-5 z-50 flex flex-col items-end gap-2.5 pointer-events-none max-w-sm w-full px-4 sm:px-0">
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none">
         {toasts.map(t => (
           <div
             key={t.id}
-            onClick={() => dismissToast(t.id)}
-            className={`pointer-events-auto cursor-pointer flex items-center justify-between gap-3 p-3.5 pl-4 pr-3 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all duration-300 ease-out transform ${
-              t.isExiting
-                ? 'opacity-0 translate-x-12 scale-95 pointer-events-none'
-                : 'opacity-100 translate-x-0 scale-100 animate-in fade-in-0 slide-in-from-right-8 duration-300'
-            } ${
-              t.type === 'success'
-                ? 'bg-zinc-950/95 dark:bg-black/95 border-emerald-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(16,185,129,0.15)]'
-                : t.type === 'error'
-                ? 'bg-zinc-950/95 dark:bg-black/95 border-rose-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(244,63,94,0.15)]'
-                : t.type === 'warning'
-                ? 'bg-zinc-950/95 dark:bg-black/95 border-amber-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(245,158,11,0.15)]'
-                : 'bg-zinc-950/95 dark:bg-black/95 border-sky-500/40 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.6),0_0_15px_rgba(14,165,233,0.15)]'
-            }`}
+            className="pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded-full border bg-popover/90 text-popover-foreground shadow-lg backdrop-blur-md text-sm font-medium animate-in fade-in-0 slide-in-from-top-4"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                t.type === 'success'
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : t.type === 'error'
-                  ? 'bg-rose-500/15 text-rose-400'
-                  : t.type === 'warning'
-                  ? 'bg-amber-500/15 text-amber-400'
-                  : 'bg-sky-500/15 text-sky-400'
-              }`}>
-                {t.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
-                {t.type === 'warning' && <AlertTriangle className="w-4 h-4" />}
-                {t.type === 'error' && <XCircle className="w-4 h-4" />}
-                {t.type === 'info' && <Activity className="w-4 h-4" />}
-              </div>
-              <div className="flex flex-col min-w-0 pr-1">
-                <span className="text-xs font-semibold tracking-tight text-foreground leading-snug">
-                  {t.message}
-                </span>
-                {t.subtext && (
-                  <span className="text-[11px] text-muted-foreground truncate leading-normal mt-0.5">
-                    {t.subtext}
-                  </span>
-                )}
-              </div>
+            {t.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+            {t.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+            {t.type === 'error' && <XCircle className="w-4 h-4 text-destructive" />}
+            {t.type === 'info' && <Activity className="w-4 h-4 text-primary" />}
+            <div className="flex flex-col">
+              <span className="font-semibold">{t.message}</span>
+              {t.subtext && <span className="text-xs text-muted-foreground">{t.subtext}</span>}
             </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                dismissToast(t.id);
-              }}
-              className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-white/10 active:scale-95 transition-all flex-shrink-0"
-              title="Dismiss"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
           </div>
         ))}
       </div>
@@ -1577,12 +1525,11 @@ export default function LrsysPortal() {
                     </span>
                   </div>
 
-                  <div className={`grid grid-cols-1 ${
-                    workerStreams.length === 1 ? 'sm:grid-cols-1' :
+                  <div className={`grid grid-cols-1 ${workerStreams.length === 1 ? 'sm:grid-cols-1' :
                     workerStreams.length === 2 ? 'sm:grid-cols-2' :
-                    workerStreams.length === 3 ? 'sm:grid-cols-3' :
-                    'sm:grid-cols-2 lg:grid-cols-4'
-                  } gap-3`}>
+                      workerStreams.length === 3 ? 'sm:grid-cols-3' :
+                        'sm:grid-cols-2 lg:grid-cols-4'
+                    } gap-3`}>
                     {workerStreams.map(w => {
                       const isExtracting = w.status === 'extracting';
                       const isCompleted = w.status === 'completed';
@@ -1591,15 +1538,14 @@ export default function LrsysPortal() {
                       return (
                         <div
                           key={w.id}
-                          className={`relative overflow-hidden rounded-2xl p-3.5 flex flex-col justify-between transition-all duration-300 backdrop-blur-md ${
-                            isExtracting
-                              ? 'bg-zinc-900/90 border border-cyan-500/40 shadow-[0_0_15px_-3px_rgba(6,182,212,0.15)]'
-                              : isError
+                          className={`relative overflow-hidden rounded-2xl p-3.5 flex flex-col justify-between transition-all duration-300 backdrop-blur-md ${isExtracting
+                            ? 'bg-zinc-900/90 border border-cyan-500/40 shadow-[0_0_15px_-3px_rgba(6,182,212,0.15)]'
+                            : isError
                               ? 'bg-zinc-900/70 border border-rose-500/40'
                               : isCompleted
-                              ? 'bg-zinc-900/80 border border-emerald-500/30'
-                              : 'bg-zinc-900/60 border border-zinc-800/80'
-                          }`}
+                                ? 'bg-zinc-900/80 border border-emerald-500/30'
+                                : 'bg-zinc-900/60 border border-zinc-800/80'
+                            }`}
                         >
                           {/* Card Header: Stream tag & Completed badge */}
                           <div className="flex items-center justify-between gap-2 mb-2">
@@ -1659,15 +1605,14 @@ export default function LrsysPortal() {
                           <div className="mt-2.5">
                             <div className="h-1.5 w-full bg-zinc-800/80 rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-300 ${
-                                  isExtracting
-                                    ? 'bg-gradient-to-r from-cyan-500 to-sky-400'
-                                    : isError
+                                className={`h-full rounded-full transition-all duration-300 ${isExtracting
+                                  ? 'bg-gradient-to-r from-cyan-500 to-sky-400'
+                                  : isError
                                     ? 'bg-rose-500'
                                     : isCompleted
-                                    ? 'bg-emerald-400'
-                                    : 'bg-zinc-700'
-                                }`}
+                                      ? 'bg-emerald-400'
+                                      : 'bg-zinc-700'
+                                  }`}
                                 style={{
                                   width: `${isExtracting ? (w.progress || 50) : isCompleted ? 100 : 0}%`
                                 }}
@@ -1903,7 +1848,7 @@ export default function LrsysPortal() {
               </Card>
 
               {/* iOS-Style Interactive Storage Bucket Card */}
-              <Card 
+              <Card
                 onClick={() => { setIsStorageModalOpen(true); fetchStorageStats(true); }}
                 className="shadow-sm border-sky-500/25 bg-gradient-to-br from-sky-500/[0.05] via-blue-500/[0.02] to-transparent cursor-pointer hover:border-sky-500/60 hover:shadow-lg hover:scale-[1.01] active:scale-[0.98] transition-all duration-200 select-none group relative overflow-hidden"
               >
@@ -2747,11 +2692,11 @@ export default function LrsysPortal() {
            iOS-STYLE SYSTEM SETTINGS ACTION SHEET MODAL
            ======================================================== */}
       {isSettingsModalOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setIsSettingsModalOpen(false)}
         >
-          <div 
+          <div
             className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 max-h-[92vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
@@ -2887,11 +2832,10 @@ export default function LrsysPortal() {
                     value={settings.customApiKey || ''}
                     onChange={e => setSettings({ ...settings, customApiKey: e.target.value })}
                     disabled={!settings.useCustomApiKey}
-                    className={`text-xs font-mono rounded-xl bg-background border-border/60 transition-all ${
-                      settings.useCustomApiKey
-                        ? 'border-emerald-500/60 shadow-sm focus:border-emerald-500'
-                        : 'opacity-40 cursor-not-allowed'
-                    }`}
+                    className={`text-xs font-mono rounded-xl bg-background border-border/60 transition-all ${settings.useCustomApiKey
+                      ? 'border-emerald-500/60 shadow-sm focus:border-emerald-500'
+                      : 'opacity-40 cursor-not-allowed'
+                      }`}
                   />
                   <p className="text-[11px] text-muted-foreground">
                     {settings.useCustomApiKey ? (
@@ -2923,11 +2867,10 @@ export default function LrsysPortal() {
                         key={m}
                         type="button"
                         onClick={() => setSettings({ ...settings, geminiModel: m })}
-                        className={`px-2.5 py-1 rounded-xl text-[10px] font-mono transition-all ${
-                          settings.geminiModel === m
-                            ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
-                            : 'bg-muted/60 text-muted-foreground hover:bg-muted'
-                        }`}
+                        className={`px-2.5 py-1 rounded-xl text-[10px] font-mono transition-all ${settings.geminiModel === m
+                          ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                          : 'bg-muted/60 text-muted-foreground hover:bg-muted'
+                          }`}
                       >
                         {m}
                       </button>
@@ -2992,15 +2935,15 @@ export default function LrsysPortal() {
 
               {/* iOS Action Buttons */}
               <div className="pt-2 space-y-2">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full py-3 rounded-2xl font-semibold bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98] transition-all shadow-md"
                 >
                   Save Settings
                 </Button>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   className="w-full py-2.5 rounded-2xl font-semibold border-border/60 hover:bg-muted active:scale-[0.98] transition-all"
                   onClick={() => setIsSettingsModalOpen(false)}
                 >
@@ -3016,11 +2959,11 @@ export default function LrsysPortal() {
            iOS-STYLE MOBILE SCANNER QR CODE ACTION SHEET MODAL
            ======================================================== */}
       {isMobileModalOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setIsMobileModalOpen(false)}
         >
-          <div 
+          <div
             className="w-full max-w-sm bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 p-6 text-center"
             onClick={e => e.stopPropagation()}
           >
@@ -3070,7 +3013,7 @@ export default function LrsysPortal() {
            iOS-STYLE STORAGE MANAGEMENT ACTION SHEET MODAL
            ======================================================== */}
       {isStorageModalOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => {
             if (!isPurgingStorage) {
@@ -3079,7 +3022,7 @@ export default function LrsysPortal() {
             }
           }}
         >
-          <div 
+          <div
             className="w-full max-w-md bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200"
             onClick={e => e.stopPropagation()}
           >
