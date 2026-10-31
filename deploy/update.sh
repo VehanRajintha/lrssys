@@ -14,10 +14,10 @@ echo -e "${CYAN}[1/4] Pulling latest updates from GitHub...${NC}"
 git pull origin main
 
 echo -e "${CYAN}[2/4] Updating dependencies...${NC}"
-npm install
+npm install --no-audit --prefer-offline
 
 echo -e "${CYAN}[3/4] Rebuilding Next.js application...${NC}"
-npm run build
+NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 echo -e "${CYAN}[4/4] Reloading PM2 process with zero downtime...${NC}"
 pm2 restart lrsys

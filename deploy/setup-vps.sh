@@ -27,34 +27,58 @@ ACTUAL_USER="${SUDO_USER:-$USER}"
 USER_HOME=$(eval echo "~$ACTUAL_USER")
 PROJECT_DIR=$(pwd)
 
-echo -e "${GREEN}[1/8] Updating system packages...${NC}"
+# 2. Configure 4GB Swap Space (Crucial for AWS Lightsail/EC2 to prevent Out-Of-Memory 'Killed' errors)
+echo -e "${GREEN}[1/9] Checking and configuring Swap memory...${NC}"
+CURRENT_SWAP=$(free -m | awk '/Swap:/ {print $2}')
+if [ -z "$CURRENT_SWAP" ] || [ "$CURRENT_SWAP" -lt 1000 ]; then
+  if [ ! -f /swapfile ]; then
+    echo -e "${YELLOW}Creating 4GB swap space at /swapfile to prevent memory crashes...${NC}"
+    fallocate -l 4G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=4096
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    if ! grep -q '/swapfile' /etc/fstab; then
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+    sysctl vm.swappiness=20 || true
+    echo -e "${GREEN}Swap space successfully configured! (4GB active)${NC}"
+  else
+    swapon /swapfile 2>/dev/null || true
+  fi
+else
+  echo -e "Swap space already active: ${CURRENT_SWAP}MB"
+fi
+
+# 3. Update system packages
+echo -e "${GREEN}[2/9] Updating system packages...${NC}"
 apt-get update -y
 apt-get install -y curl wget git build-essential ufw software-properties-common
 
-# 2. Install Node.js 20 LTS (NodeSource)
-echo -e "${GREEN}[2/8] Installing Node.js 20 LTS...${NC}"
-if ! command -v node &> /dev/null || [[ $(node -v) != v20* ]]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+# 4. Install Node.js 22 LTS (Active LTS required by Supabase SDK & modern packages)
+echo -e "${GREEN}[3/9] Installing Node.js 22 LTS...${NC}"
+if ! command -v node &> /dev/null || [[ $(node -v) != v22* ]]; then
+  echo -e "${YELLOW}Upgrading Node.js to v22 LTS...${NC}"
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
 echo -e "Node.js version: $(node -v), npm version: $(npm -v)"
 
-# 3. Install PM2 Globally
-echo -e "${GREEN}[3/8] Installing PM2 process manager...${NC}"
+# 5. Install PM2 Globally
+echo -e "${GREEN}[4/9] Installing PM2 process manager...${NC}"
 npm install -g pm2
 
-# 4. Install Nginx & Certbot (SSL)
-echo -e "${GREEN}[4/8] Installing Nginx and Certbot for SSL...${NC}"
+# 6. Install Nginx & Certbot (SSL)
+echo -e "${GREEN}[5/9] Installing Nginx and Certbot for SSL...${NC}"
 apt-get install -y nginx certbot python3-certbot-nginx
 
-# 5. Configure Firewall (UFW)
-echo -e "${GREEN}[5/8] Configuring Firewall (Allowing SSH, HTTP, HTTPS)...${NC}"
+# 7. Configure Firewall (UFW)
+echo -e "${GREEN}[6/9] Configuring Firewall (Allowing SSH, HTTP, HTTPS)...${NC}"
 ufw allow OpenSSH || true
 ufw allow 'Nginx Full' || true
 ufw --force enable || true
 
-# 6. Check .env.local
-echo -e "${GREEN}[6/8] Verifying Environment Configuration...${NC}"
+# 8. Check .env.local
+echo -e "${GREEN}[7/9] Verifying Environment Configuration...${NC}"
 if [ ! -f "$PROJECT_DIR/.env.local" ]; then
   echo -e "${YELLOW}[WARNING] .env.local was not found!${NC}"
   if [ -f "$PROJECT_DIR/.env.example" ]; then
@@ -65,17 +89,17 @@ if [ ! -f "$PROJECT_DIR/.env.local" ]; then
   fi
 fi
 
-# Ensure uploads and logs folders exist with proper permissions
+# Ensure uploads, logs, and data folders exist with proper permissions
 mkdir -p "$PROJECT_DIR/uploads" "$PROJECT_DIR/logs" "$PROJECT_DIR/data"
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR"
 
-# 7. Install Dependencies and Build Next.js
-echo -e "${GREEN}[7/8] Installing dependencies and building production app...${NC}"
-sudo -u "$ACTUAL_USER" npm install
-sudo -u "$ACTUAL_USER" npm run build
+# 9. Install Dependencies and Build Next.js
+echo -e "${GREEN}[8/9] Installing dependencies and building production app...${NC}"
+sudo -u "$ACTUAL_USER" npm install --no-audit --prefer-offline
+sudo -u "$ACTUAL_USER" env NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
-# 8. Configure Nginx Reverse Proxy
-echo -e "${GREEN}[8/8] Configuring Nginx reverse proxy...${NC}"
+# 10. Configure Nginx Reverse Proxy
+echo -e "${GREEN}[9/9] Configuring Nginx and starting PM2...${NC}"
 cp "$PROJECT_DIR/deploy/nginx.conf" /etc/nginx/sites-available/lrsys
 
 # Disable default site if present
@@ -90,8 +114,7 @@ ln -sf /etc/nginx/sites-available/lrsys /etc/nginx/sites-enabled/lrsys
 nginx -t
 systemctl restart nginx
 
-# 9. Start Application with PM2
-echo -e "${GREEN}[9/9] Starting LRSYS with PM2...${NC}"
+# Start Application with PM2
 sudo -u "$ACTUAL_USER" pm2 delete lrsys 2>/dev/null || true
 sudo -u "$ACTUAL_USER" pm2 start ecosystem.config.js
 sudo -u "$ACTUAL_USER" pm2 save
