@@ -146,6 +146,7 @@ export default function LrsysPortal() {
   const [filter, setFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'CORRECTED' | 'DUPLICATES'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [isStampAscending, setIsStampAscending] = useState(false);
 
   // Skeleton Loading states
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -689,7 +690,7 @@ export default function LrsysPortal() {
     const q = searchTerm.trim().toLowerCase();
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
 
-    return records.filter(r => {
+    const list = records.filter(r => {
       // 1. Tab Status filter
       if (filter === 'NEEDS_REVIEW' && r.status !== 'NEEDS_REVIEW') return false;
       if (filter === 'VERIFIED' && r.status !== 'VERIFIED') return false;
@@ -717,7 +718,26 @@ export default function LrsysPortal() {
 
       return true;
     });
-  }, [records, filter, searchTerm, duplicateIdSet]);
+
+    // 3. Smooth Stamp Duty Number Ascending Sort (when iOS toggle switch is enabled)
+    if (isStampAscending) {
+      return [...list].sort((a, b) => {
+        const getNum = (s?: string) => {
+          if (!s) return Infinity;
+          const clean = s.replace(/\D/g, '');
+          if (!clean) return Infinity;
+          const n = parseInt(clean, 10);
+          return isNaN(n) ? Infinity : n;
+        };
+        const numA = getNum(a.greenStampNumber);
+        const numB = getNum(b.greenStampNumber);
+        if (numA !== numB) return numA - numB;
+        return (a.greenStampNumber || '').localeCompare(b.greenStampNumber || '');
+      });
+    }
+
+    return list;
+  }, [records, filter, searchTerm, duplicateIdSet, isStampAscending]);
 
   const currentRecordIndex = selectedRecord
     ? filteredRecords.findIndex(r => r.id === selectedRecord.id)
@@ -2234,7 +2254,39 @@ export default function LrsysPortal() {
                           className="rounded border-border cursor-pointer"
                         />
                       </TableHead>
-                      <TableHead className="w-32">Stamp Duty No</TableHead>
+                      <TableHead className="w-44 select-none">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground whitespace-nowrap">Stamp Duty No</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isStampAscending}
+                              onClick={() => setIsStampAscending(prev => !prev)}
+                              className={cn(
+                                "relative inline-flex h-4 w-7.5 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner",
+                                isStampAscending
+                                  ? "bg-emerald-500 hover:bg-emerald-600"
+                                  : "bg-muted-foreground/30 hover:bg-muted-foreground/40"
+                              )}
+                              title={isStampAscending ? "Sorted Ascending (1 → 9). Click to reset order." : "Click to sort Stamp Duty Numbers in Ascending order (1 → 9)"}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  "pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm transition duration-200 ease-in-out mt-[1px] ml-[1px]",
+                                  isStampAscending ? "translate-x-3.5" : "translate-x-0"
+                                )}
+                              />
+                            </button>
+                            {isStampAscending && (
+                              <span className="text-[10px] font-mono font-bold text-emerald-500 dark:text-emerald-400 animate-in fade-in zoom-in-75 duration-150">
+                                ASC
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </TableHead>
                       <TableHead className="w-36">Customs Ref</TableHead>
                       <TableHead>Consignee (Box 8)</TableHead>
                       <TableHead>Declarant / Agent</TableHead>
