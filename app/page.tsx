@@ -2918,7 +2918,7 @@ export default function LrsysPortal() {
 
             {/* Form Body */}
             <form onSubmit={handleSaveSettings} className="p-6 space-y-4 overflow-y-auto">
-              {/* Group 1: Gemini Vision AI Keys */}
+              {/* Group 1: Gemini Vision AI Credentials */}
               <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 space-y-3.5">
                 <div className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -2930,124 +2930,90 @@ export default function LrsysPortal() {
                   </Badge>
                 </div>
 
-                {/* Primary API Key (Protected System Key) */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                      <Lock className="w-3 h-3 text-muted-foreground" />
-                      <span>Primary API Key</span>
-                    </Label>
-                    <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/50">
-                      Pre-configured System Key
-                    </span>
-                  </div>
-                  <Input
-                    type="password"
-                    readOnly
-                    disabled
-                    value="AIzaSy••••••••••••••••••••••••••••••••••••"
-                    className="text-xs font-mono rounded-xl bg-background/50 border-border/40 text-muted-foreground/80 cursor-not-allowed select-none"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Active key used for instant multi-pass vision extraction (configured in environment).
-                  </p>
-                </div>
+                {/* Custom API Key Override with iOS Toggle Switch */}
+                <div className="p-3.5 rounded-2xl bg-background/50 border border-border/50 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <Key className={cn("w-3.5 h-3.5 transition-colors", settings.useCustomApiKey ? "text-emerald-500" : "text-muted-foreground")} />
+                        <span className="text-xs font-semibold text-foreground">
+                          Custom API Key Override
+                        </span>
+                        {settings.useCustomApiKey ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/25">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/40">
+                            Pre-configured System Keys Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {settings.useCustomApiKey
+                          ? 'Override active: The system will use your custom key for extraction.'
+                          : 'Using high-speed pre-configured system keys from server environment.'}
+                      </p>
+                    </div>
 
-                {/* Backup API Key (Protected Auto-Failover Key) */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                      <Lock className="w-3 h-3 text-muted-foreground" />
-                      <span>Backup API Key (Stream 02 Dedicated)</span>
-                    </Label>
-                    <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/50">
-                      Pre-configured System Key
-                    </span>
-                  </div>
-                  <Input
-                    type="password"
-                    readOnly
-                    disabled
-                    value="AQ.Ab8RN6••••••••••••••••••••••••••••••••••••"
-                    className="text-xs font-mono rounded-xl bg-background/50 border-border/40 text-muted-foreground/80 cursor-not-allowed select-none"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Dedicated to Stream 02; auto-failover backup if Stream 01 hits quota.
-                  </p>
-                </div>
-
-                {/* Tertiary API Key (Stream 03 Dedicated) */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                      <Key className="w-3 h-3 text-emerald-500" />
-                      <span>Key 3 (Stream 03 Dedicated Key)</span>
-                    </Label>
-                    <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                      3x Accelerator
-                    </span>
-                  </div>
-                  <Input
-                    type="password"
-                    placeholder="Enter 3rd Gemini API key (AQ.Ab8RN6...)"
-                    value={settings.geminiApiKey3 || ''}
-                    onChange={e => setSettings({ ...settings, geminiApiKey3: e.target.value })}
-                    className="text-xs font-mono rounded-xl bg-background border-border/60 focus:border-emerald-500"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Binds Stream 03 to its own isolated quota pool, tripling parallel throughput with 0 rate limit collisions.
-                  </p>
-                </div>
-
-                {/* Custom API Key Override Section */}
-                <div className="pt-3 border-t border-border/50 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="useCustomApiKey" className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        id="useCustomApiKey"
-                        type="checkbox"
-                        checked={Boolean(settings.useCustomApiKey)}
-                        onChange={e => setSettings({ ...settings, useCustomApiKey: e.target.checked })}
-                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary accent-primary cursor-pointer"
+                    {/* iOS-Style Toggle Switch (Right Side) */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(settings.useCustomApiKey)}
+                      onClick={() => setSettings({ ...settings, useCustomApiKey: !settings.useCustomApiKey })}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 shadow-inner select-none",
+                        settings.useCustomApiKey
+                          ? "bg-emerald-500 hover:bg-emerald-600"
+                          : "bg-muted-foreground/30 dark:bg-zinc-700/70 hover:bg-muted-foreground/40"
+                      )}
+                      title={settings.useCustomApiKey ? "Turn OFF custom key override" : "Turn ON custom key override"}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                          settings.useCustomApiKey ? "translate-x-5" : "translate-x-0"
+                        )}
                       />
-                      <span className="text-xs font-semibold text-foreground">
-                        Use Custom API Key Override
-                      </span>
-                    </label>
-                    {settings.useCustomApiKey ? (
-                      <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] py-0.5 px-2">
-                        Custom Key Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] py-0.5 px-2 text-muted-foreground border-border/60">
-                        System Keys Active
-                      </Badge>
-                    )}
+                    </button>
                   </div>
 
-                  <Input
-                    id="customApiKey"
-                    type="password"
-                    placeholder="Enter custom Gemini API key (AIzaSy...)"
-                    value={settings.customApiKey || ''}
-                    onChange={e => setSettings({ ...settings, customApiKey: e.target.value })}
-                    disabled={!settings.useCustomApiKey}
-                    className={`text-xs font-mono rounded-xl bg-background border-border/60 transition-all ${settings.useCustomApiKey
-                      ? 'border-emerald-500/60 shadow-sm focus:border-emerald-500'
-                      : 'opacity-40 cursor-not-allowed'
-                      }`}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    {settings.useCustomApiKey ? (
-                      <span className="text-emerald-400 font-medium">
-                        ⚡ Override active: The system will use exactly this custom key instead of the pre-configured system keys.
-                      </span>
-                    ) : (
-                      <span>
-                        Tick the box to use your own Gemini API key. When unticked, the system uses the pre-configured keys above.
-                      </span>
-                    )}
-                  </p>
+                  {/* Custom API Key Input (Shown smoothly when enabled) */}
+                  {settings.useCustomApiKey ? (
+                    <div className="space-y-1.5 pt-2 border-t border-border/40 animate-in fade-in-50 slide-in-from-top-1 duration-200">
+                      <Label htmlFor="customApiKey" className="text-[11px] font-medium text-muted-foreground">
+                        Enter Custom Gemini API Key
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="customApiKey"
+                          type="password"
+                          placeholder="Enter custom Gemini API key (AIzaSy...)"
+                          value={settings.customApiKey || ''}
+                          onChange={e => setSettings({ ...settings, customApiKey: e.target.value })}
+                          className="text-xs font-mono rounded-xl bg-background border-emerald-500/50 focus:border-emerald-500 pr-10 shadow-sm"
+                          autoFocus
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                          <Key className="w-3.5 h-3.5 text-emerald-500" />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-emerald-400 font-medium">
+                        ✓ Override active: The system will use exactly this custom key instead of the pre-configured system keys.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-muted/20 border border-border/30 text-[11px] text-muted-foreground flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Pre-configured System Keys active & ready (Multi-Stream Failover)</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-muted-foreground/70">Protected</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Gemini Vision Model */}
