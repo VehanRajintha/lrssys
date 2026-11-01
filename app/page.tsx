@@ -2254,37 +2254,30 @@ export default function LrsysPortal() {
                           className="rounded border-border cursor-pointer"
                         />
                       </TableHead>
-                      <TableHead className="w-44 select-none">
-                        <div className="flex items-center gap-2">
+                      <TableHead className="w-48 select-none">
+                        <div className="flex items-center gap-2.5">
                           <span className="font-semibold text-foreground whitespace-nowrap">Stamp Duty No</span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={isStampAscending}
-                              onClick={() => setIsStampAscending(prev => !prev)}
-                              className={cn(
-                                "relative inline-flex h-4 w-7.5 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner",
-                                isStampAscending
-                                  ? "bg-emerald-500 hover:bg-emerald-600"
-                                  : "bg-muted-foreground/30 hover:bg-muted-foreground/40"
-                              )}
-                              title={isStampAscending ? "Sorted Ascending (1 → 9). Click to reset order." : "Click to sort Stamp Duty Numbers in Ascending order (1 → 9)"}
-                            >
-                              <span
-                                aria-hidden="true"
-                                className={cn(
-                                  "pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm transition duration-200 ease-in-out mt-[1px] ml-[1px]",
-                                  isStampAscending ? "translate-x-3.5" : "translate-x-0"
-                                )}
-                              />
-                            </button>
-                            {isStampAscending && (
-                              <span className="text-[10px] font-mono font-bold text-emerald-500 dark:text-emerald-400 animate-in fade-in zoom-in-75 duration-150">
-                                ASC
-                              </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isStampAscending}
+                            onClick={() => setIsStampAscending(prev => !prev)}
+                            className={cn(
+                              "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none shadow-sm select-none",
+                              isStampAscending
+                                ? "bg-[#34c759] hover:bg-[#30b753]"
+                                : "bg-[#39393d] hover:bg-[#48484a]"
                             )}
-                          </div>
+                            title={isStampAscending ? "Sorted Ascending (1 → 9). Click to reset order." : "Click to sort by Stamp Duty No (Ascending order)"}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out",
+                                isStampAscending ? "translate-x-4" : "translate-x-0"
+                              )}
+                            />
+                          </button>
                         </div>
                       </TableHead>
                       <TableHead className="w-36">Customs Ref</TableHead>
