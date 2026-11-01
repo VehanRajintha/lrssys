@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
 import { CusDecRecord, Settings, QueueStatus, Stats, TallyResult, TallyRecord } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 // shadcn/ui components
 import { Button } from '@/components/ui/button';
@@ -103,7 +104,22 @@ interface Toast {
   subtext?: string;
 }
 
+export interface ConfirmModalState {
+  isOpen: boolean;
+  title: string;
+  description: string;
+  highlightText?: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  variant?: 'destructive' | 'warning' | 'primary';
+  icon?: 'trash' | 'alert' | 'refresh' | 'sparkles';
+  onConfirm: () => Promise<void> | void;
+  isProcessing?: boolean;
+}
+
 export default function LrsysPortal() {
+  // iOS Confirmation Sheet State
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   // Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
@@ -234,34 +250,46 @@ export default function LrsysPortal() {
   }, [records, duplicateIdSet]);
 
   // Remove all duplicate records from database & cache
-  const handleRemoveDuplicates = async () => {
+  const handleRemoveDuplicates = () => {
     if (duplicateIdSet.size === 0) {
       showToast('No duplicate declarations detected.', 'info');
       return;
     }
-    if (!confirm(`Are you sure you want to clean up and remove ${duplicateIdSet.size} duplicate declaration(s)?`)) return;
-    try {
-      showToast('Removing duplicate records...', 'info');
-      const res = await fetch('/api/records/delete-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(duplicateIdSet) })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(data.message || `Removed ${duplicateIdSet.size} duplicate declaration(s)`, 'success');
-        await fetchRecords();
-        await fetchStorageStats();
-      } else {
-        const fb = await fetch('/api/records/deduplicate', { method: 'POST' });
-        const fbData = await fb.json();
-        showToast(fbData.message || 'Duplicates cleaned up', 'success');
-        await fetchRecords();
-        await fetchStorageStats();
+    const dupCount = duplicateIdSet.size;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Clean Duplicate Declarations?',
+      description: `Identified ${dupCount} redundant duplicate declaration(s) matching primary entries. Clean them up and preserve only verified unique declarations?`,
+      highlightText: 'Original primary declarations and master files will remain untouched.',
+      confirmLabel: `Clean ${dupCount} Duplicate${dupCount > 1 ? 's' : ''}`,
+      cancelLabel: 'Keep All Records',
+      variant: 'warning',
+      icon: 'sparkles',
+      onConfirm: async () => {
+        try {
+          showToast('Removing duplicate records...', 'info');
+          const res = await fetch('/api/records/delete-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: Array.from(duplicateIdSet) })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            showToast(data.message || `Removed ${dupCount} duplicate declaration(s)`, 'success');
+            await fetchRecords();
+            await fetchStorageStats();
+          } else {
+            const fb = await fetch('/api/records/deduplicate', { method: 'POST' });
+            const fbData = await fb.json().catch(() => ({}));
+            showToast(fbData.message || 'Duplicates cleaned up', 'success');
+            await fetchRecords();
+            await fetchStorageStats();
+          }
+        } catch (err: any) {
+          showToast('Deduplication failed', 'error', err.message);
+        }
       }
-    } catch (err: any) {
-      showToast('Deduplication failed', 'error', err.message);
-    }
+    });
   };
 
   // Quick edit form state
@@ -465,6 +493,12 @@ export default function LrsysPortal() {
       }
 
       if (e.key === 'Escape') {
+        if (confirmModal?.isOpen) {
+          if (!confirmModal.isProcessing) {
+            setConfirmModal(null);
+          }
+          return;
+        }
         if (isInspectionModalOpen) {
           setIsInspectionModalOpen(false);
           return;
@@ -727,56 +761,100 @@ export default function LrsysPortal() {
   // -------------------------------------------------------------
   // BULK ACTIONS
   // -------------------------------------------------------------
-  const deleteSelectedRecords = async () => {
+  const deleteSelectedRecords = () => {
     const ids = Array.from(selectedRowIds);
     if (ids.length === 0) return;
-    if (!confirm(`Are you sure you want to delete ${ids.length} selected declaration(s)?`)) return;
 
-    try {
-      const res = await fetch('/api/records/delete-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
-      });
-      if (res.ok) {
-        setSelectedRowIds(new Set());
-        fetchRecords();
-        showToast(`Deleted ${ids.length} declaration(s)`, 'info');
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete ${ids.length} Declaration${ids.length > 1 ? 's' : ''}?`,
+      description: `Are you sure you want to remove ${ids.length} selected declaration record(s) from the customs ledger? This action cannot be undone.`,
+      highlightText: `${ids.length} declaration${ids.length > 1 ? 's' : ''} will be permanently removed from the active ledger.`,
+      confirmLabel: `Delete ${ids.length} Declaration${ids.length > 1 ? 's' : ''}`,
+      cancelLabel: 'Keep Declarations',
+      variant: 'destructive',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/records/delete-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+          });
+          if (res.ok) {
+            setSelectedRowIds(new Set());
+            await fetchRecords();
+            await fetchStorageStats();
+            showToast(`Deleted ${ids.length} declaration(s)`, 'info');
+          } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Bulk delete failed', 'error');
+          }
+        } catch (err: any) {
+          showToast('Bulk delete failed', 'error', err.message);
+        }
       }
-    } catch (err: any) {
-      showToast('Bulk delete failed', 'error', err.message);
-    }
+    });
   };
 
-  const clearAllRecords = async () => {
-    if (!confirm('Are you sure you want to clear all extracted declarations from the system?')) return;
-    try {
-      const res = await fetch('/api/records/clear', { method: 'POST' });
-      if (res.ok) {
-        setSelectedRecord(null);
-        setSelectedRowIds(new Set());
-        setRecords([]);
-        await fetchRecords();
-        await fetchStorageStats();
-        showToast('System ledger cleared', 'info');
+  const clearAllRecords = () => {
+    const recordCount = records.length;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Clear Customs Cargo Ledger?',
+      description: `Are you sure you want to clear all ${recordCount} extracted declaration(s) from the system? The active ledger and tally calculations will be reset.`,
+      highlightText: 'Original uploaded document scans on your VPS storage remain completely safe and untouched.',
+      confirmLabel: 'Yes, Clear Ledger',
+      cancelLabel: 'Cancel',
+      variant: 'destructive',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/records/clear', { method: 'POST' });
+          if (res.ok) {
+            setSelectedRecord(null);
+            setSelectedRowIds(new Set());
+            setRecords([]);
+            await fetchRecords();
+            await fetchStorageStats();
+            showToast('System ledger cleared', 'info');
+          } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Failed to clear ledger', 'error');
+          }
+        } catch (err: any) {
+          showToast('Clear failed', 'error', err.message);
+        }
       }
-    } catch (err: any) {
-      showToast('Clear failed', 'error', err.message);
-    }
+    });
   };
 
-  const reprocessAllWithAI = async () => {
-    if (!confirm('This will wipe current records and re-extract all uploaded images using Google Gemini Vision AI. Proceed?')) return;
-    try {
-      const res = await fetch('/api/records/reprocess-all', { method: 'POST' });
-      if (res.ok) {
-        setSelectedRowIds(new Set());
-        fetchRecords();
-        showToast('Re-processing all declarations with AI...', 'info');
+  const reprocessAllWithAI = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reprocess All with Gemini AI?',
+      description: `This will reset current ledger entries and re-extract all uploaded images using Google Gemini Vision AI.`,
+      highlightText: 'All uploaded document images stored on your VPS will be preserved and re-analyzed.',
+      confirmLabel: 'Reprocess All Scans',
+      cancelLabel: 'Cancel',
+      variant: 'warning',
+      icon: 'refresh',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/records/reprocess-all', { method: 'POST' });
+          if (res.ok) {
+            setSelectedRowIds(new Set());
+            fetchRecords();
+            showToast('Re-processing all declarations with AI...', 'info');
+          } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Failed to start reprocessing', 'error');
+          }
+        } catch (err: any) {
+          showToast('Reprocess error', 'error', err.message);
+        }
       }
-    } catch (err: any) {
-      showToast('Reprocess error', 'error', err.message);
-    }
+    });
   };
 
   const reprocessUnknownsWithAI = async () => {
@@ -3513,6 +3591,113 @@ export default function LrsysPortal() {
                   Close
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+           iOS-STYLE CONFIRMATION ACTION SHEET / POPUP MODAL
+           ======================================================== */}
+      {confirmModal?.isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => {
+            if (!confirmModal.isProcessing) {
+              setConfirmModal(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm sm:max-w-md bg-card/95 border border-border/80 rounded-t-[32px] sm:rounded-[28px] shadow-2xl overflow-hidden backdrop-blur-2xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 p-6 text-center select-none"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* iOS Pull Indicator Pill */}
+            <div className="pb-3 flex justify-center">
+              <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+            </div>
+
+            {/* Glowing Icon Capsule */}
+            <div
+              className={cn(
+                "w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-sm border transition-all duration-200",
+                confirmModal.variant === 'destructive'
+                  ? "bg-destructive/15 text-destructive border-destructive/30 shadow-destructive/10"
+                  : confirmModal.variant === 'warning'
+                  ? "bg-amber-500/15 text-amber-500 border-amber-500/30 shadow-amber-500/10"
+                  : "bg-primary/15 text-primary border-primary/30 shadow-primary/10"
+              )}
+            >
+              {confirmModal.icon === 'trash' && <Trash2 className="w-7 h-7" />}
+              {confirmModal.icon === 'alert' && <AlertTriangle className="w-7 h-7" />}
+              {confirmModal.icon === 'refresh' && <RefreshCw className={cn("w-7 h-7", confirmModal.isProcessing && "animate-spin")} />}
+              {confirmModal.icon === 'sparkles' && <Sparkles className="w-7 h-7" />}
+              {!confirmModal.icon && <AlertTriangle className="w-7 h-7" />}
+            </div>
+
+            <h3 className="text-lg font-bold text-foreground tracking-tight">
+              {confirmModal.title}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed px-2">
+              {confirmModal.description}
+            </p>
+
+            {/* Safe Storage / Context Banner */}
+            {confirmModal.highlightText && (
+              <div className="mt-4 mx-0.5 px-3.5 py-2.5 rounded-2xl bg-muted/40 border border-border/50 text-[11px] text-muted-foreground flex items-center gap-2.5 text-left">
+                <div
+                  className={cn(
+                    "w-2 h-2 rounded-full shrink-0",
+                    confirmModal.variant === 'destructive' ? "bg-rose-500 animate-pulse" :
+                    confirmModal.variant === 'warning' ? "bg-amber-500 animate-pulse" : "bg-sky-500 animate-pulse"
+                  )}
+                />
+                <span className="leading-snug">{confirmModal.highlightText}</span>
+              </div>
+            )}
+
+            {/* iOS Action Buttons */}
+            <div className="mt-5 space-y-2">
+              <Button
+                type="button"
+                disabled={confirmModal.isProcessing}
+                className={cn(
+                  "w-full py-3 rounded-2xl font-semibold shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs sm:text-sm",
+                  confirmModal.variant === 'destructive'
+                    ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-destructive/20 border border-destructive/30"
+                    : confirmModal.variant === 'warning'
+                    ? "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20 border border-amber-500/30"
+                    : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20"
+                )}
+                onClick={async () => {
+                  try {
+                    setConfirmModal(prev => prev ? { ...prev, isProcessing: true } : null);
+                    await confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  } catch {
+                    setConfirmModal(prev => prev ? { ...prev, isProcessing: false } : null);
+                  }
+                }}
+              >
+                {confirmModal.isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <span>{confirmModal.confirmLabel}</span>
+                )}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                disabled={confirmModal.isProcessing}
+                className="w-full py-3 rounded-2xl font-semibold border-border/60 hover:bg-muted active:scale-[0.98] transition-all text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setConfirmModal(null)}
+              >
+                {confirmModal.cancelLabel || 'Cancel'}
+              </Button>
             </div>
           </div>
         </div>
