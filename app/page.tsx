@@ -534,8 +534,7 @@ export default function LrsysPortal() {
   const fetchRecords = async (updateSelection = true, showTableLoading = false) => {
     if (showTableLoading) setIsTableLoading(true);
     try {
-      const q = searchTerm.trim();
-      const url = `/api/records?status=ALL${q ? `&search=${encodeURIComponent(q)}` : ''}`;
+      const url = `/api/records?status=ALL`;
       const res = await fetch(url, {
         cache: 'no-store',
         headers: {
@@ -686,13 +685,39 @@ export default function LrsysPortal() {
     }
   }, [selectedRecord]);
 
-  const filteredRecords = records.filter(r => {
-    if (filter === 'NEEDS_REVIEW') return r.status === 'NEEDS_REVIEW';
-    if (filter === 'VERIFIED') return r.status === 'VERIFIED';
-    if (filter === 'CORRECTED') return r.status === 'CORRECTED';
-    if (filter === 'DUPLICATES') return duplicateIdSet.has(r.id);
-    return true;
-  });
+  const filteredRecords = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+
+    return records.filter(r => {
+      // 1. Tab Status filter
+      if (filter === 'NEEDS_REVIEW' && r.status !== 'NEEDS_REVIEW') return false;
+      if (filter === 'VERIFIED' && r.status !== 'VERIFIED') return false;
+      if (filter === 'CORRECTED' && r.status !== 'CORRECTED') return false;
+      if (filter === 'DUPLICATES' && !duplicateIdSet.has(r.id)) return false;
+
+      // 2. Real-time instant search filter across all key declaration attributes
+      if (tokens.length > 0) {
+        const stamp = (r.greenStampNumber || '').toLowerCase();
+        const ref = (r.customsRefNumber || '').toLowerCase();
+        const consignee = (r.consigneeName || '').toLowerCase();
+        const declarant = (r.declarantName || '').toLowerCase();
+        const bl = (r.blNumber || '').toLowerCase();
+        const goods = (r.goodsDescription || '').toLowerCase();
+        const date = (r.customsDate || '').toLowerCase();
+        const cTin = (r.consigneeTIN || '').toLowerCase();
+        const dTin = (r.declarantTIN || '').toLowerCase();
+        const filename = (r.filename || '').toLowerCase();
+        const origName = (r.originalName || '').toLowerCase();
+
+        const corpus = `${stamp} ${ref} ${consignee} ${declarant} ${bl} ${goods} ${date} ${cTin} ${dTin} ${filename} ${origName}`;
+        const matchesAll = tokens.every(token => corpus.includes(token));
+        if (!matchesAll) return false;
+      }
+
+      return true;
+    });
+  }, [records, filter, searchTerm, duplicateIdSet]);
 
   const currentRecordIndex = selectedRecord
     ? filteredRecords.findIndex(r => r.id === selectedRecord.id)
@@ -2157,22 +2182,39 @@ export default function LrsysPortal() {
                     </TabsList>
                   </Tabs>
 
-                  {/* Search Bar with Shortcut Indicator */}
+                  {/* Search Bar with Instant Real-Time Filtering & Shortcut / Clear Button */}
                   <div className="relative w-full sm:w-72">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     <Input
                       ref={searchInputRef}
                       placeholder="Search stamp, ref, consignee..."
                       value={searchTerm}
                       onChange={e => setSearchTerm(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter') fetchRecords(true, true);
+                        if (e.key === 'Escape' && searchTerm) {
+                          e.stopPropagation();
+                          setSearchTerm('');
+                        }
                       }}
-                      className="pl-9 pr-14 h-9 text-xs"
+                      className="pl-9 pr-14 h-9 text-xs rounded-xl"
                     />
-                    <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground bg-muted border rounded">
-                      ⌘K
-                    </kbd>
+                    {searchTerm ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm('');
+                          searchInputRef.current?.focus();
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground bg-muted/70 hover:bg-muted active:scale-90 transition-all cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground bg-muted border rounded select-none pointer-events-none">
+                        ⌘K
+                      </kbd>
+                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -2236,13 +2278,36 @@ export default function LrsysPortal() {
                         </TableRow>
                       ))
                     ) : filteredRecords.length === 0 ? (
-                      <TableRow>
+                      <TableRow className="animate-in fade-in-50 duration-200">
                         <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                          <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                          <p className="font-medium">No customs declarations found</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Upload document images or import a ZIP archive above.
-                          </p>
+                          {searchTerm.trim() ? (
+                            <div className="space-y-2 max-w-sm mx-auto">
+                              <Search className="w-8 h-8 mx-auto mb-2 opacity-40 text-muted-foreground" />
+                              <p className="font-semibold text-foreground">No declarations matching &ldquo;{searchTerm}&rdquo;</p>
+                              <p className="text-xs text-muted-foreground">
+                                Try searching by stamp duty number, ref, consignee, declarant, or bill of lading.
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSearchTerm('');
+                                  searchInputRef.current?.focus();
+                                }}
+                                className="mt-2 text-xs rounded-xl"
+                              >
+                                Clear Search Filter
+                              </Button>
+                            </div>
+                          ) : (
+                            <div>
+                              <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                              <p className="font-medium">No customs declarations found</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Upload document images or import a ZIP archive above.
+                              </p>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -2252,7 +2317,7 @@ export default function LrsysPortal() {
                           <TableRow
                             key={r.id}
                             onClick={() => openInspectionModal(r)}
-                            className="cursor-pointer hover:bg-muted/50 data-[state=selected]:bg-muted/70 transition-colors"
+                            className="cursor-pointer hover:bg-muted/50 data-[state=selected]:bg-muted/70 transition-all duration-150 animate-in fade-in-50"
                           >
                             <TableCell className="text-center" onClick={e => e.stopPropagation()}>
                               <input
