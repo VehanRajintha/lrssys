@@ -554,13 +554,30 @@ export default function LrsysPortal() {
       if (res.ok) {
         const data = await res.json();
         setSystemMetrics(data);
-        setLanUrl(data.primaryLanUrl || `http://localhost:${data.port}`);
+        if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          setLanUrl(window.location.origin);
+        } else {
+          setLanUrl(data.primaryLanUrl || `http://localhost:${data.port}`);
+        }
       }
     } catch (err) { }
     finally {
       if (showLoading) setIsRefreshingSystem(false);
     }
   };
+
+  // Dedicated Real-Time System Telemetry Polling (Smooth 2.5s live polling, 1.2s when modal is active)
+  useEffect(() => {
+    fetchSystemInfo();
+    const intervalTime = isSystemModalOpen ? 1200 : 2500;
+    const sysInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        fetchSystemInfo();
+      }
+    }, intervalTime);
+
+    return () => clearInterval(sysInterval);
+  }, [isSystemModalOpen]);
 
   const fetchStorageStats = async (showLoading = false) => {
     if (showLoading) setIsStorageLoading(true);
@@ -1230,8 +1247,12 @@ export default function LrsysPortal() {
 
   // Render QR Code in modal
   useEffect(() => {
-    if (isMobileModalOpen && qrCanvasRef.current && lanUrl) {
-      QRCode.toCanvas(qrCanvasRef.current, lanUrl, { width: 220, margin: 2 }, err => {
+    if (isMobileModalOpen && qrCanvasRef.current) {
+      let targetUrl = lanUrl;
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        targetUrl = window.location.origin;
+      }
+      QRCode.toCanvas(qrCanvasRef.current, targetUrl, { width: 220, margin: 2 }, err => {
         if (err) console.error(err);
       });
     }
@@ -3079,7 +3100,7 @@ export default function LrsysPortal() {
 
             <h3 className="text-lg font-bold text-foreground tracking-tight">Mobile Port Scanner</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Scan with your phone camera on this Wi-Fi network to capture and upload CusDec photos instantly
+              Scan with your phone camera to open and upload CusDec photos instantly
             </p>
 
             <div className="my-5 flex flex-col items-center gap-3">
@@ -3091,10 +3112,10 @@ export default function LrsysPortal() {
                 href={lanUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs font-mono font-semibold text-primary hover:underline flex items-center gap-1.5 bg-primary/10 px-3.5 py-1.5 rounded-full border border-primary/20 active:scale-95 transition-all"
+                className="text-xs font-mono font-semibold text-primary hover:underline flex items-center gap-1.5 bg-primary/10 px-3.5 py-1.5 rounded-full border border-primary/20 active:scale-95 transition-all max-w-[280px] truncate"
               >
-                <span>{lanUrl}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="truncate">{lanUrl}</span>
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
               </a>
             </div>
 
@@ -3372,9 +3393,15 @@ export default function LrsysPortal() {
               <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 mx-auto mb-2 shadow-sm">
                 <Cpu className="w-6 h-6 animate-pulse" />
               </div>
-              <h3 className="text-lg font-bold text-foreground tracking-tight">
-                Server & Hardware Health
-              </h3>
+              <div className="flex items-center justify-center gap-2 mt-1">
+                <h3 className="text-lg font-bold text-foreground tracking-tight">
+                  Server & Hardware Health
+                </h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  LIVE (1.2s)
+                </span>
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {systemMetrics.system.hostname} • {systemMetrics.system.platform === 'win32' ? 'Windows' : 'Ubuntu Linux'} ({systemMetrics.system.arch})
               </p>
@@ -3476,7 +3503,7 @@ export default function LrsysPortal() {
                   onClick={() => fetchSystemInfo(true)}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingSystem ? 'animate-spin' : ''}`} />
-                  {isRefreshingSystem ? 'Updating...' : 'Refresh Telemetry'}
+                  {isRefreshingSystem ? 'Updating...' : 'Live Auto-Sync (1.2s)'}
                 </Button>
                 <Button
                   variant="default"
