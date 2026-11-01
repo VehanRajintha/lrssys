@@ -2673,7 +2673,7 @@ export default function LrsysPortal() {
       <Dialog open={isInspectionModalOpen} onOpenChange={setIsInspectionModalOpen}>
         <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
           {/* Dialog Header */}
-          <div className="p-4 sm:p-5 border-b flex items-center justify-between gap-3 bg-muted/30">
+          <div className="p-4 sm:p-5 pr-14 sm:pr-16 border-b flex items-center justify-between gap-3 bg-muted/30 relative">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                 <FileText className="w-4 h-4" />
@@ -2962,9 +2962,19 @@ export default function LrsysPortal() {
           onClick={() => setIsSettingsModalOpen(false)}
         >
           <div
-            className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 max-h-[92vh] flex flex-col"
+            className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 max-h-[92vh] flex flex-col relative"
             onClick={e => e.stopPropagation()}
           >
+            {/* Top Right Close Button */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsModalOpen(false)}
+              className="absolute right-4 top-4 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50 transition-all duration-200 active:scale-95 cursor-pointer shadow-sm group"
+              title="Close Settings (Esc)"
+            >
+              <X className="w-4 h-4 transition-transform group-hover:scale-110" />
+            </button>
+
             {/* iOS Pull Indicator Pill */}
             <div className="pt-3 pb-1 flex justify-center">
               <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
@@ -3254,9 +3264,23 @@ export default function LrsysPortal() {
           }}
         >
           <div
-            className="w-full max-w-md bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200"
+            className="w-full max-w-md bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 relative"
             onClick={e => e.stopPropagation()}
           >
+            {/* Top Right Close Button */}
+            <button
+              type="button"
+              disabled={isPurgingStorage}
+              onClick={() => {
+                setConfirmPurgeAction(null);
+                setIsStorageModalOpen(false);
+              }}
+              className="absolute right-4 top-4 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50 transition-all duration-200 active:scale-95 cursor-pointer shadow-sm group disabled:opacity-40"
+              title="Close Storage (Esc)"
+            >
+              <X className="w-4 h-4 transition-transform group-hover:scale-110" />
+            </button>
+
             {/* iOS Pull Indicator Pill */}
             <div className="pt-3 pb-1 flex justify-center">
               <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
@@ -3489,9 +3513,19 @@ export default function LrsysPortal() {
           onClick={() => setIsSystemModalOpen(false)}
         >
           <div
-            className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200"
+            className="w-full max-w-lg bg-card/95 border border-border/70 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-200 relative"
             onClick={e => e.stopPropagation()}
           >
+            {/* Top Right Close Button */}
+            <button
+              type="button"
+              onClick={() => setIsSystemModalOpen(false)}
+              className="absolute right-4 top-4 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50 transition-all duration-200 active:scale-95 cursor-pointer shadow-sm group"
+              title="Close System Health (Esc)"
+            >
+              <X className="w-4 h-4 transition-transform group-hover:scale-110" />
+            </button>
+
             {/* iOS Pull Indicator Pill */}
             <div className="pt-3 pb-1 flex justify-center">
               <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
