@@ -804,8 +804,49 @@ export default function LrsysPortal() {
   };
 
   // -------------------------------------------------------------
-  // BULK ACTIONS
+  // RECORD ACTIONS (INDIVIDUAL & BULK)
   // -------------------------------------------------------------
+  const requestDeleteSingleRecord = (record: CusDecRecord) => {
+    const stampLabel = record.greenStampNumber && record.greenStampNumber !== '000000'
+      ? `#${record.greenStampNumber}`
+      : (record.customsRefNumber && record.customsRefNumber !== 'UNKNOWN' ? record.customsRefNumber : (record.filename || 'this record'));
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete Declaration ${stampLabel}?`,
+      description: `Are you sure you want to permanently remove this declaration (${record.consigneeName || 'Unknown Consignee'} • ${record.customsRefNumber || record.filename}) from the active customs ledger?`,
+      highlightText: 'The original uploaded document scan in server storage remains safe and intact.',
+      confirmLabel: 'Yes, Delete Declaration',
+      cancelLabel: 'Cancel',
+      variant: 'destructive',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/records/${record.id}`, { method: 'DELETE' });
+          if (res.ok) {
+            setSelectedRowIds(prev => {
+              const next = new Set(prev);
+              next.delete(record.id);
+              return next;
+            });
+            if (selectedRecord?.id === record.id) {
+              setIsInspectionModalOpen(false);
+              setSelectedRecord(null);
+            }
+            await fetchRecords();
+            await fetchStorageStats();
+            showToast(`Deleted declaration ${stampLabel}`, 'info');
+          } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Failed to delete record', 'error');
+          }
+        } catch (err: any) {
+          showToast('Failed to delete declaration', 'error', err.message);
+        }
+      }
+    });
+  };
+
   const deleteSelectedRecords = () => {
     const ids = Array.from(selectedRowIds);
     if (ids.length === 0) return;
@@ -2286,7 +2327,7 @@ export default function LrsysPortal() {
                       <TableHead className="w-28 text-center">Status</TableHead>
                       <TableHead className="w-24 text-center">Confidence</TableHead>
                       <TableHead className="w-32">Date</TableHead>
-                      <TableHead className="w-24 text-center">Action</TableHead>
+                      <TableHead className="w-32 text-center">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2428,15 +2469,28 @@ export default function LrsysPortal() {
                             </TableCell>
 
                             <TableCell className="text-center" onClick={e => e.stopPropagation()}>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openInspectionModal(r)}
-                                className="h-7 px-2.5 gap-1 text-xs"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-primary" />
-                                <span>Inspect</span>
-                              </Button>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openInspectionModal(r)}
+                                  className="h-7 px-2.5 gap-1 text-xs rounded-lg hover:border-primary/50 transition-all"
+                                  title="Inspect & Edit Declaration"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-primary" />
+                                  <span>Inspect</span>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => requestDeleteSingleRecord(r)}
+                                  className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
+                                  title={`Delete declaration #${r.greenStampNumber || r.customsRefNumber || r.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span className="sr-only">Delete</span>
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -2734,12 +2788,24 @@ export default function LrsysPortal() {
             </div>
 
             {selectedRecord && (
-              <Badge
-                variant={selectedRecord.status === 'VERIFIED' ? 'success' : selectedRecord.status === 'CORRECTED' ? 'info' : 'warning'}
-                className="text-xs font-semibold uppercase tracking-wider"
-              >
-                {selectedRecord.status}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => requestDeleteSingleRecord(selectedRecord)}
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1 rounded-lg transition-all cursor-pointer"
+                  title="Delete this declaration"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Delete</span>
+                </Button>
+                <Badge
+                  variant={selectedRecord.status === 'VERIFIED' ? 'success' : selectedRecord.status === 'CORRECTED' ? 'info' : 'warning'}
+                  className="text-xs font-semibold uppercase tracking-wider"
+                >
+                  {selectedRecord.status}
+                </Badge>
+              </div>
             )}
           </div>
 
@@ -2991,6 +3057,21 @@ export default function LrsysPortal() {
                       Next →
                     </Button>
                   </div>
+
+                  {selectedRecord && (
+                    <div className="pt-2 border-t border-border/40 w-full flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => requestDeleteSingleRecord(selectedRecord)}
+                        className="text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5 h-7 px-2 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Declaration</span>
+                      </Button>
+                    </div>
+                  )}
                 </CardFooter>
               </Card>
             </div>
