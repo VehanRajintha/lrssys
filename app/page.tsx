@@ -358,7 +358,8 @@ export default function LrsysPortal() {
     totalFiles: 0,
     totalBytes: 0,
     totalFormatted: '0.00 B',
-    quotaFormatted: '50 GB',
+    quotaBytes: 0,
+    quotaFormatted: 'Calculating...',
     percentUsed: 0,
     cloudFiles: 0,
     cloudBytes: 0,
@@ -366,8 +367,13 @@ export default function LrsysPortal() {
     localFiles: 0,
     localBytes: 0,
     localFormatted: '0.00 B',
-    diskFreeFormatted: undefined as string | undefined,
-    diskTotalFormatted: undefined as string | undefined
+    diskFreeBytes: 0,
+    diskFreeFormatted: '' as string | undefined,
+    diskTotalBytes: 0,
+    diskTotalFormatted: '' as string | undefined,
+    diskUsedBytes: 0,
+    diskUsedFormatted: '' as string | undefined,
+    diskPercentUsed: 0
   });
   const [lanUrl, setLanUrl] = useState('http://localhost:5000');
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -2140,7 +2146,7 @@ export default function LrsysPortal() {
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
-                    {storageStats.provider === 'local' ? 'VPS Storage' : storageStats.provider === 'hybrid' ? 'Hybrid Storage' : 'Storage Bucket'}
+                    VPS NVMe Storage
                     <span className="inline-block w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
                   </CardTitle>
                   <HardDrive className="w-4 h-4 text-sky-500 group-hover:rotate-12 transition-transform duration-300" />
@@ -2158,10 +2164,14 @@ export default function LrsysPortal() {
                     <>
                       <div>
                         <div className="text-3xl font-bold tracking-tight text-sky-600 dark:text-sky-400">
-                          {storageStats.totalFormatted}
+                          {storageStats.diskFreeFormatted ? `${storageStats.diskFreeFormatted} Free` : storageStats.totalFormatted}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {storageStats.totalFiles} files · {storageStats.percentUsed}% of {storageStats.quotaFormatted || '5GB'}
+                          {storageStats.diskTotalFormatted ? (
+                            <>of {storageStats.diskTotalFormatted} VPS SSD · {storageStats.totalFiles} scans ({storageStats.totalFormatted})</>
+                          ) : (
+                            <>{storageStats.totalFiles} files · {storageStats.percentUsed}% used</>
+                          )}
                         </p>
                       </div>
                       {/* Circular Activity Ring */}
@@ -2176,7 +2186,7 @@ export default function LrsysPortal() {
                           />
                           <path
                             className="text-sky-500 transition-all duration-1000 ease-out"
-                            strokeDasharray={`${Math.max(4, storageStats.percentUsed)}, 100`}
+                            strokeDasharray={`${Math.max(4, storageStats.diskPercentUsed || storageStats.percentUsed)}, 100`}
                             strokeWidth="3.5"
                             strokeLinecap="round"
                             stroke="currentColor"
@@ -2185,7 +2195,7 @@ export default function LrsysPortal() {
                           />
                         </svg>
                         <span className="absolute text-[10px] font-semibold text-sky-600 dark:text-sky-300">
-                          {Math.round(storageStats.percentUsed)}%
+                          {Math.round(storageStats.diskPercentUsed || storageStats.percentUsed)}%
                         </span>
                       </div>
                     </>
@@ -3439,7 +3449,7 @@ export default function LrsysPortal() {
                       />
                       <path
                         className="text-sky-500 transition-all duration-1000 ease-out"
-                        strokeDasharray={`${Math.max(5, storageStats.percentUsed)}, 100`}
+                        strokeDasharray={`${Math.max(5, storageStats.diskPercentUsed || storageStats.percentUsed)}, 100`}
                         strokeWidth="3.2"
                         strokeLinecap="round"
                         stroke="currentColor"
@@ -3450,59 +3460,63 @@ export default function LrsysPortal() {
                     <div className="absolute flex flex-col items-center">
                       <HardDrive className="w-5 h-5 text-sky-500 mb-0.5" />
                       <span className="text-base font-bold text-foreground">
-                        {storageStats.percentUsed}%
+                        {storageStats.diskPercentUsed || storageStats.percentUsed}%
                       </span>
                       <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-                        Capacity
+                        SSD Used
                       </span>
                     </div>
                   </div>
 
                   <h3 className="text-lg font-bold text-foreground tracking-tight">
-                    {storageStats.totalFormatted} of {storageStats.quotaFormatted} Used
+                    {storageStats.diskFreeFormatted ? (
+                      <>{storageStats.diskFreeFormatted} Available of {storageStats.diskTotalFormatted || storageStats.quotaFormatted}</>
+                    ) : (
+                      <>{storageStats.totalFormatted} of {storageStats.quotaFormatted} Used</>
+                    )}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {storageStats.totalFiles} documents stored in {storageStats.provider === 'supabase' ? 'Supabase Bucket' : storageStats.provider === 'hybrid' ? 'Supabase + Local Cache' : 'VPS NVMe Disk'}
+                    {storageStats.totalFiles} documents ({storageStats.totalFormatted}) stored on {storageStats.provider === 'supabase' ? 'Supabase Storage' : 'Hosted VPS NVMe SSD'}
                   </p>
 
-                  {/* Breakdown Pills */}
+                  {/* Breakdown Grid (4 iOS Cards) */}
                   <div className="grid grid-cols-2 gap-2 mt-4 text-left">
-                    {storageStats.provider === 'local' ? (
-                      <>
-                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                          <div className="text-[11px] text-muted-foreground font-medium">VPS Scans</div>
-                          <div className="text-sm font-semibold text-foreground mt-0.5">
-                            {storageStats.localFormatted}
-                          </div>
-                          <div className="text-[10px] text-sky-500">{storageStats.localFiles} document scans</div>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                          <div className="text-[11px] text-muted-foreground font-medium">Available Disk</div>
-                          <div className="text-sm font-semibold text-foreground mt-0.5">
-                            {storageStats.diskFreeFormatted || '50+ GB'}
-                          </div>
-                          <div className="text-[10px] text-emerald-500">Free VPS SSD storage</div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                          <div className="text-[11px] text-muted-foreground font-medium">Cloud Storage</div>
-                          <div className="text-sm font-semibold text-foreground mt-0.5">
-                            {storageStats.cloudFormatted}
-                          </div>
-                          <div className="text-[10px] text-sky-500">{storageStats.cloudFiles} remote files</div>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
-                          <div className="text-[11px] text-muted-foreground font-medium">Local Cache</div>
-                          <div className="text-sm font-semibold text-foreground mt-0.5">
-                            {storageStats.localFormatted}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">{storageStats.localFiles} cached files</div>
-                        </div>
-                      </>
-                    )}
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                      <div className="text-[11px] text-muted-foreground font-medium">VPS Full Capacity</div>
+                      <div className="text-sm font-semibold text-foreground mt-0.5 font-mono">
+                        {storageStats.diskTotalFormatted || storageStats.quotaFormatted}
+                      </div>
+                      <div className="text-[10px] text-sky-500">Hardware NVMe SSD</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Actual Available Free</div>
+                      <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
+                        {storageStats.diskFreeFormatted || 'Calculating...'}
+                      </div>
+                      <div className="text-[10px] text-emerald-500">Free space for scans</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                      <div className="text-[11px] text-muted-foreground font-medium">Document Scans</div>
+                      <div className="text-sm font-semibold text-foreground mt-0.5 font-mono">
+                        {storageStats.localFormatted || storageStats.totalFormatted}
+                      </div>
+                      <div className="text-[10px] text-sky-500">{storageStats.localFiles || storageStats.totalFiles} files in /uploads</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                      <div className="text-[11px] text-muted-foreground font-medium">System & OS Used</div>
+                      <div className="text-sm font-semibold text-foreground mt-0.5 font-mono">
+                        {storageStats.diskUsedFormatted || 'Active'}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{storageStats.diskPercentUsed || storageStats.percentUsed}% disk utilized</div>
+                    </div>
                   </div>
+
+                  {storageStats.cloudFiles > 0 && (
+                    <div className="mt-2.5 px-3 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-between text-xs text-sky-600 dark:text-sky-400 text-left">
+                      <span>Supabase Cloud Sync</span>
+                      <span className="font-semibold font-mono">{storageStats.cloudFormatted} ({storageStats.cloudFiles} remote files)</span>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -3734,6 +3748,14 @@ export default function LrsysPortal() {
 
               {/* Hardware & Process Specs List */}
               <div className="mt-3.5 rounded-2xl bg-muted/20 border border-border/40 divide-y divide-border/40 text-left text-xs">
+                {systemMetrics.disk && (
+                  <div className="p-2.5 flex items-center justify-between">
+                    <span className="text-muted-foreground">VPS NVMe SSD</span>
+                    <span className="font-medium text-emerald-500 font-mono">
+                      {systemMetrics.disk.freeFormatted} Free <span className="text-muted-foreground font-normal">of {systemMetrics.disk.totalFormatted} ({systemMetrics.disk.percent}% used)</span>
+                    </span>
+                  </div>
+                )}
                 <div className="p-2.5 flex items-center justify-between">
                   <span className="text-muted-foreground">Processor</span>
                   <span className="font-medium text-foreground truncate max-w-[220px]" title={systemMetrics.cpu.model}>

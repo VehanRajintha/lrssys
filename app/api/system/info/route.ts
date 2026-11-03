@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import os from 'os';
 import * as db from '@/lib/db';
+import { getHostDiskStats } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +103,7 @@ export async function GET() {
   const cpus = os.cpus();
   const cpuModel = cpus[0]?.model || 'VPS Virtual CPU';
   const cpuCores = cpus.length;
+  const disk = getHostDiskStats();
 
   return NextResponse.json({
     // Live Hardware Meters
@@ -119,6 +121,15 @@ export async function GET() {
       usedFormatted: formatBytes(usedMem),
       freeFormatted: formatBytes(freeMem),
       percent: ramPercent
+    },
+    disk: {
+      totalBytes: disk.totalBytes,
+      freeBytes: disk.freeBytes,
+      usedBytes: disk.usedBytes,
+      totalFormatted: formatBytes(disk.totalBytes),
+      freeFormatted: formatBytes(disk.freeBytes),
+      usedFormatted: formatBytes(disk.usedBytes),
+      percent: disk.percentUsed
     },
     process: {
       rss: formatBytes(memUsage.rss),
