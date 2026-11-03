@@ -170,11 +170,23 @@ export function processRawRows(rawRows: string[][]): TallyRecord[] {
   return records;
 }
 
+export type TallyProgressCallback = (progress: {
+  current: number;
+  total: number;
+  percent: number;
+  currentItem?: string;
+  stage?: string;
+}) => void;
+
 /**
  * Reconcile File 1 against File 2
  * MATCH CRITERIA: BOTH Consignee Name AND Declarant Name must be verified in File 2!
  */
-export function reconcileRecords(file1Records: TallyRecord[], file2Records: TallyRecord[]): TallyResult {
+export function reconcileRecords(
+  file1Records: TallyRecord[],
+  file2Records: TallyRecord[],
+  onProgress?: TallyProgressCallback
+): TallyResult {
   const isMasterCompanyRegistry = file2Records.some(r => r.companyName) &&
     file2Records.every(r => !r.rawRow || r.consigneeName === r.declarantName || !r.declarantName);
 
@@ -205,10 +217,22 @@ export function reconcileRecords(file1Records: TallyRecord[], file2Records: Tall
   const matched: TallyRecord[] = [];
   const unmatchedFile1: TallyRecord[] = [];
   const matchedFile2Indices = new Set<number>();
+  const total = file1Records.length;
 
-  for (const r1 of file1Records) {
+  for (let i = 0; i < total; i++) {
+    const r1 = file1Records[i];
     let isMatch = false;
     let matchNote = '';
+
+    if (onProgress && (i % 2 === 0 || i === total - 1)) {
+      onProgress({
+        current: i + 1,
+        total,
+        percent: Math.min(99, Math.round(((i + 1) / total) * 100)),
+        currentItem: r1.consigneeName || r1.declarantName || r1.customsRef || `Declaration #${i + 1}`,
+        stage: `Evaluating Box 8 & Box 14 (${i + 1}/${total})`
+      });
+    }
 
     if (isMasterCompanyRegistry) {
       const consigneeFound = companyExistsInMaster(r1.normalizedConsignee);

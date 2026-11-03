@@ -78,7 +78,10 @@ import {
   Cpu,
   Zap,
   Clock,
-  Loader2
+  Loader2,
+  Hourglass,
+  ShieldCheck,
+  Timer
 } from 'lucide-react';
 
 export interface WorkerStreamState {
@@ -115,6 +118,12 @@ export interface ConfirmModalState {
   icon?: 'trash' | 'alert' | 'refresh' | 'sparkles';
   onConfirm: () => Promise<void> | void;
   isProcessing?: boolean;
+}
+
+function formatSeconds(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 export default function LrsysPortal() {
@@ -341,6 +350,16 @@ export default function LrsysPortal() {
   const [tallyResult, setTallyResult] = useState<TallyResult | null>(null);
   const [tallyFilter, setTallyFilter] = useState<'MATCHED' | 'UNMATCHED_F1' | 'UNMATCHED_F2'>('MATCHED');
   const [isTallyRunning, setIsTallyRunning] = useState(false);
+  const [tallyProgress, setTallyProgress] = useState({
+    percent: 0,
+    stage: 'Initializing reconciliation engine...',
+    current: 0,
+    total: 0,
+    currentItem: '',
+    elapsedSeconds: 0,
+    etaSeconds: null as number | null,
+    speed: 0
+  });
 
   // Modals state
   const [isInspectionModalOpen, setIsInspectionModalOpen] = useState(false);
@@ -1397,21 +1416,133 @@ export default function LrsysPortal() {
     }
     formData.append('file2', tallyF2File);
 
+    const initialTotal = tallySource === 'db' ? records.length : 0;
+    const startTime = Date.now();
+    let currentProcessed = 0;
+    let targetTotal = initialTotal;
+
+    setTallyProgress({
+      percent: 5,
+      stage: 'Preparing declaration records and master reference...',
+      current: 0,
+      total: initialTotal,
+      currentItem: '',
+      elapsedSeconds: 0,
+      etaSeconds: null,
+      speed: 0
+    });
+    setIsTallyRunning(true);
+
+    // Live elapsed timer & adaptive ETA interval (updates every 500ms)
+    const timerInterval = setInterval(() => {
+      const elapsed = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
+      setTallyProgress(prev => {
+        let eta: number | null = prev.etaSeconds;
+        let speed = prev.speed;
+        if (currentProcessed > 0 && elapsed > 0) {
+          speed = parseFloat((currentProcessed / elapsed).toFixed(1));
+          const remaining = Math.max(0, targetTotal - currentProcessed);
+          if (speed > 0) {
+            eta = Math.round(remaining / speed);
+          }
+        } else if (prev.percent > 10 && elapsed > 1) {
+          const remainingPct = 100 - prev.percent;
+          eta = Math.max(1, Math.round((remainingPct / prev.percent) * elapsed));
+        }
+        return {
+          ...prev,
+          elapsedSeconds: elapsed,
+          etaSeconds: eta,
+          speed
+        };
+      });
+    }, 500);
+
     try {
-      setIsTallyRunning(true);
       showToast('Reconciling declarations against master reference...', 'info');
-      const res = await fetch('/api/tally/run', {
+      const res = await fetch('/api/tally/run?stream=1', {
         method: 'POST',
         body: formData
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Tally failed');
-      setTallyResult(data);
-      showToast('Tally Complete!', 'success', `${data.matched?.length || 0} items matched both Consignee and Declarant.`);
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Tally failed');
+      }
+
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalResult: TallyResult | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.type === 'progress') {
+                if (msg.current) currentProcessed = msg.current;
+                if (msg.total && msg.total > 0) targetTotal = msg.total;
+
+                const elapsed = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
+                let speed = 0;
+                let eta: number | null = null;
+                if (currentProcessed > 0 && elapsed > 0) {
+                  speed = parseFloat((currentProcessed / elapsed).toFixed(1));
+                  const remaining = Math.max(0, targetTotal - currentProcessed);
+                  if (speed > 0) eta = Math.round(remaining / speed);
+                }
+
+                setTallyProgress(prev => ({
+                  ...prev,
+                  percent: msg.percent ?? prev.percent,
+                  stage: msg.stage || prev.stage,
+                  current: msg.current ?? prev.current,
+                  total: msg.total ?? prev.total,
+                  currentItem: msg.currentItem || prev.currentItem,
+                  speed: speed || prev.speed,
+                  etaSeconds: eta ?? prev.etaSeconds
+                }));
+              } else if (msg.type === 'complete') {
+                finalResult = msg.result;
+              } else if (msg.type === 'error') {
+                throw new Error(msg.error);
+              }
+            } catch (parseErr: any) {
+              if (parseErr.message && !parseErr.message.includes('JSON')) {
+                throw parseErr;
+              }
+            }
+          }
+        }
+
+        if (finalResult) {
+          setTallyProgress(prev => ({ ...prev, percent: 100, stage: 'Reconciliation complete!' }));
+          setTallyResult(finalResult);
+          showToast('Tally Complete!', 'success', `${finalResult.matched?.length || 0} items matched both Consignee and Declarant.`);
+        } else {
+          // Fallback fetch if stream ended without payload
+          const lastRes = await fetch('/api/tally/run');
+          if (lastRes.ok) {
+            const data = await lastRes.json();
+            setTallyResult(data);
+          }
+        }
+      }
     } catch (err: any) {
       showToast('Tally Error', 'error', err.message);
     } finally {
-      setIsTallyRunning(false);
+      clearInterval(timerInterval);
+      setTimeout(() => {
+        setIsTallyRunning(false);
+      }, 500);
     }
   };
 
@@ -2601,33 +2732,131 @@ export default function LrsysPortal() {
               </CardContent>
             </Card>
 
-            {/* Tally Running Skeleton State */}
+            {/* Tally Live Progress Dashboard */}
             {isTallyRunning && (
-              <Card className="shadow-sm border-primary/30 animate-in fade-in duration-200">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Skeleton className="h-5 w-52 rounded mb-1.5" />
-                      <Skeleton className="h-3.5 w-72 rounded" />
+              <Card className="shadow-xl border-emerald-500/30 bg-gradient-to-br from-card via-card/95 to-emerald-500/[0.04] backdrop-blur-xl animate-in fade-in zoom-in-[0.99] duration-200 relative overflow-hidden">
+                {/* Glowing Top Ambient Line */}
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-500 to-transparent animate-pulse" />
+
+                <CardHeader className="pb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-500 shadow-sm">
+                        <Activity className="w-5 h-5 animate-spin" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base font-bold text-foreground tracking-tight">
+                            Tally Manifest Reconciliation in Progress
+                          </CardTitle>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            RECONCILING
+                          </span>
+                        </div>
+                        <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                          {tallyProgress.stage}
+                        </CardDescription>
+                      </div>
                     </div>
-                    <Skeleton className="h-6 w-28 rounded-full" />
+
+                    <div className="text-right">
+                      <span className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight bg-gradient-to-r from-foreground via-emerald-500 to-teal-400 bg-clip-text text-transparent">
+                        {tallyProgress.percent}%
+                      </span>
+                    </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-4 gap-3 p-3 bg-muted/40 rounded-xl">
-                    <Skeleton className="h-4 rounded" />
-                    <Skeleton className="h-4 rounded" />
-                    <Skeleton className="h-4 rounded" />
-                    <Skeleton className="h-4 rounded" />
-                  </div>
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={`tally-skel-${i}`} className="grid grid-cols-4 gap-3 p-3 border-b border-border/30">
-                      <Skeleton className="h-4 rounded" />
-                      <Skeleton className="h-4 rounded" />
-                      <Skeleton className="h-4 rounded" />
-                      <Skeleton className="h-4 rounded" />
+
+                <CardContent className="space-y-4">
+                  {/* iOS Capsule Progress Track with Shimmer */}
+                  <div className="space-y-1.5">
+                    <div className="relative h-3.5 w-full bg-muted/60 dark:bg-zinc-900/90 rounded-full overflow-hidden p-0.5 border border-border/60 shadow-inner">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-300 ease-out shadow-[0_0_16px_rgba(16,185,129,0.4)] relative overflow-hidden"
+                        style={{ width: `${Math.max(3, tallyProgress.percent)}%` }}
+                      >
+                        <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.45)_50%,transparent_100%)] animate-shimmer" />
+                      </div>
                     </div>
-                  ))}
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5">
+                      <span>
+                        {tallyProgress.total > 0
+                          ? `Processed ${tallyProgress.current} of ${tallyProgress.total} declarations`
+                          : 'Processing declaration stream...'}
+                      </span>
+                      {tallyProgress.total > 0 && tallyProgress.current < tallyProgress.total && (
+                        <span className="font-mono text-[11px] text-emerald-500 font-medium">
+                          {tallyProgress.total - tallyProgress.current} remaining
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 4 Telemetry HUD Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                    {/* Elapsed Time */}
+                    <div className="p-3 rounded-2xl bg-muted/30 border border-border/50">
+                      <div className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-sky-500" />
+                        <span>Elapsed Time</span>
+                      </div>
+                      <div className="text-base font-bold text-foreground font-mono mt-0.5">
+                        {formatSeconds(tallyProgress.elapsedSeconds)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">Active runtime</div>
+                    </div>
+
+                    {/* Estimated Time Remaining (ETA) */}
+                    <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                        <Hourglass className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                        <span>Est. Remaining</span>
+                      </div>
+                      <div className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                        {tallyProgress.etaSeconds !== null
+                          ? (tallyProgress.etaSeconds <= 1 ? '< 1s' : `~${tallyProgress.etaSeconds}s`)
+                          : 'Calculating...'}
+                      </div>
+                      <div className="text-[10px] text-emerald-500">Estimated completion</div>
+                    </div>
+
+                    {/* Processing Speed */}
+                    <div className="p-3 rounded-2xl bg-muted/30 border border-border/50">
+                      <div className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Throughput</span>
+                      </div>
+                      <div className="text-base font-bold text-foreground font-mono mt-0.5">
+                        {tallyProgress.speed > 0 ? `${tallyProgress.speed} rec/s` : 'Analyzing...'}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">Fuzzy cross-match rate</div>
+                    </div>
+
+                    {/* Strict Verification */}
+                    <div className="p-3 rounded-2xl bg-muted/30 border border-border/50">
+                      <div className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                        <span>Verification Rule</span>
+                      </div>
+                      <div className="text-xs font-bold text-foreground mt-0.5 truncate">
+                        Consignee & Declarant
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">Both Box 8 & Box 14</div>
+                    </div>
+                  </div>
+
+                  {/* Live Item Ticker */}
+                  {tallyProgress.currentItem && (
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40 flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                      <span className="text-muted-foreground flex-shrink-0">Comparing:</span>
+                      <span className="font-semibold text-foreground truncate font-mono">
+                        {tallyProgress.currentItem}
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
